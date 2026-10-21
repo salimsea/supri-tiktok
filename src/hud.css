@@ -185,6 +185,23 @@ select {
   padding: 7px 6px;
   font-family: var(--mono);
   font-size: 12px;
+  max-width: 100%;
+}
+optgroup {
+  background: #091322;
+  color: var(--blue);
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 4px 2px;
+}
+optgroup option {
+  background: #050b14;
+  color: var(--text);
+  font-weight: 400;
+  font-size: 12px;
+  padding: 3px 6px;
 }
 input[type='range'] { width: 100%; accent-color: var(--blue); }
 .meter { position: relative; height: 6px; background: var(--blue-faint); }

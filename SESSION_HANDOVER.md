@@ -14,9 +14,9 @@
   - **3D Graphics**: Three.js (Three core, `GLTFLoader`, `EffectComposer`, `RenderPass`, `UnrealBloomPass`, `OutputPass`). Model dasar wajah: `LeePerrySmith.glb` (atau fallback kepala prosedural).
   - **Backend Server**: Node.js + Express (`server.js`) pada port `3000`.
   - **Build Tool**: Vite (`vite.config.js`) pada port `5173` (proxy `/api` ke `localhost:3000`).
-  - **LLM**: 9router (OpenAI-compatible endpoint di `http://127.0.0.1:20128/v1`).
+  - **LLM**: BeatAPI (OpenAI-compatible di `https://api.beatapi.io/v1`, model default `glm-5.3-flash-free`) dengan fallback opsi 9router (`http://127.0.0.1:20128/v1`).
   - **STT**: Web Speech API (`SpeechRecognition`).
-  - **TTS**: Dual Engine — **FireRedTTS3-Base** (lokal, suara sendiri hasil kloning) + **Microsoft Edge TTS** (`id-ID-ArdiNeural` / `id-ID-GadisNeural`) + fallback browser `speechSynthesis`.
+  - **TTS**: Multi Engine — **FireRedTTS3-Base** (lokal, suara sendiri hasil kloning) + **Fish Audio** (cloud API, model gratis `s2.1-pro-free`) + **Microsoft Edge TTS** (`id-ID-ArdiNeural` / `id-ID-GadisNeural`) + fallback browser `speechSynthesis`.
   - **Voice Cloning Service**: Python FastAPI (`tts_server.py`) pada port `8000`.
 
 ---
@@ -46,20 +46,25 @@
 
 ### B. Backend Node.js (`server.js`)
 - **Port**: `3000`.
-- **Router LLM (`/api/chat`)**: SSE stream passthrough ke 9router dengan auto-retry model.
-- **Dual-Engine TTS (`/api/tts`)**:
-  - Jika dipilih `Suara Saya (Clone)`: Memanggil service Python di `http://127.0.0.1:8000/tts` dengan timeout (`CLONE_TIMEOUT_MS`).
-  - Jika service cloning offline/timeout/gagal: **Otomatis fallback ke Edge TTS** (`id-ID-ArdiNeural`) tanpa menghasilkan error di layar browser.
+- **Router LLM (`/api/chat`)**: SSE stream passthrough atau SSE wrapper untuk upstream JSON, mendukung BeatAPI (`glm-5.3-flash-free`) maupun 9router dengan auto-retry model.
+- **Multi-Engine TTS (`/api/tts`)**:
+  - **Local Cloning**: Memanggil service Python FireRedTTS3 di `http://127.0.0.1:8000/tts`.
+  - **ElevenLabs TTS**: Memanggil `@elevenlabs/elevenlabs-js` dengan model `eleven_multilingual_v2`. Mendukung prefix dinamis `elevenlabs:<voice_id>`. Akun free tier mendukung 21 suara kategori *Premade* (Sarah, Brian, Jessica, Roger, Bella, Eric, dll.). Suara library/professional (seperti Citra, Abyasa, Putra) membutuhkan saldo/langganan berbayar (error 402 dicegah dengan fallback halus ke Edge TTS).
+  - **Fish Audio**: Memanggil `https://api.fish.audio/v1/tts` dengan model gratis `s2.1-pro-free`.
+  - **Microsoft Edge TTS**: Cadangan gratis & responsif (`id-ID-ArdiNeural`, `id-ID-GadisNeural`, `en-US-GuyNeural`, `en-US-JennyNeural`).
+  - **Fallback Cerdas**: Jika provider eksternal offline atau limit tercapai, otomatis dialihkan ke Edge TTS tanpa membuat audio macet di UI.
 - **Normalisasi Ejaan Angka**: `DEFAULT_PERSONA` diatur agar LLM menuliskan angka, tanggal, dan singkatan sebagai kata/ejaan (misal *"jam tujuh malam"*, bukan *"19:00"*) sesuai PRD 17.5.
 - **Monitor Sistem (`/api/system`)**: Membaca CPU, RAM, dan statistik transfer jaringan via `systeminformation`.
-- **Konfigurasi (`/api/config`)**: Menyediakan daftar model, daftar suara (`clone`, `id-ID-ArdiNeural`, `id-ID-GadisNeural`), dan status engine.
+- **Konfigurasi (`/api/config`)**: Menyediakan konfigurasi model aktif dan status TTS engine.
 
 ### C. Frontend & HUD (`src/main.js`, `src/index.html`, `src/hud.css`)
-- Menu dropdown **SUARA** mendukung opsi:
-  1. `Suara Saya (Clone)`
-  2. `Ardi (cowok)`
-  3. `Gadis (cewek)`
-- Teks HUD status TTS menampilkan mode aktif: `TTS: Clone (FireRedTTS3)` atau `TTS: Edge (Ardi)`.
+- Menu dropdown **SUARA** dikelompokkan secara rapi dengan `<optgroup>`:
+  1. `🌟 LOCAL / CLONE` (FireRedTTS3)
+  2. `⚡ ELEVENLABS (FREE PREMADE)` (21 suara siap pakai: Sarah, Brian, Jessica, Roger, Eric, Bella, Charlie, George, dll.)
+  3. `🔒 ELEVENLABS (LIBRARY - BUTUH SALDO)` (Citra, Abyasa, Putra, Deandra Putri, Dakocan)
+  4. `🐟 FISH AUDIO` (Raffi Ahmad `ca7021b2022d4b0fa84f53b67511b2c0`, Prabowo `b8d594e696694b499aa12e32d0c1b618`, Narator Berita Olahraga `d0b314896b3a479aa5cb04c29a8e9e25`, Ola Narator `666f0c8d71484f1980523d00141629a0`, & Fish Default via model gratis `s2.1-pro-free`)
+  5. `🌐 MICROSOFT EDGE TTS` (Ardi, Gadis, Guy, Jenny)
+- Teks HUD status TTS diperbarui secara dinamis mengikuti nama suara terpilih (misal: `TTS: 11Labs (Roger)`, `TTS: Fish (Raffi Ahmad)`, `TTS: Fish (Narator Berita Olahraga)`).
 - **Lip-Sync**: `AnalyserNode` di `src/tts.js` membaca audio buffer (baik WAV maupun MP3) secara langsung untuk menggerakkan bibir 3D dan gelombang *waveform* di dock bawah.
 
 ### D. Fitur Voice Cloning (PRD Bagian 17)
@@ -82,10 +87,17 @@
 
 File `.env` di root project memiliki konfigurasi berikut:
 ```env
-ROUTER_URL=http://127.0.0.1:20128/v1
-ROUTER_KEY=sk-2f7d55d9ea82944d-mltxcq-2ede9333
-# Daftar model dipisah koma: model pertama utama, sisanya fallback otomatis
-ROUTER_MODEL=ag/gemini-3.8-flash-low,ag/gpt-oss-120b-medium,ag/gemini-3.7-flash-low
+# LLM Endpoint (BeatAPI / 9router)
+ROUTER_URL=https://api.beatapi.io/v1
+BEATAPI_API_KEY=
+ROUTER_KEY=
+ROUTER_MODEL=glm-5.3-flash-free
+
+# Opsi alternatif jika ingin kembali ke 9router lokal:
+# ROUTER_URL=http://127.0.0.1:20128/v1
+# ROUTER_KEY=sk-xxxx
+# ROUTER_MODEL=ag/gemini-3.8-flash-low,ag/gemini-3.7-flash-low
+
 TTS_VOICE=id-ID-ArdiNeural
 
 # Konfigurasi Voice Cloning (PRD Bagian 17)

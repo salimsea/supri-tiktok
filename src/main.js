@@ -362,10 +362,22 @@ el.voiceInterrupt.addEventListener('change', () => {
 });
 el.voiceSelect.addEventListener('change', () => {
   tts.voice = el.voiceSelect.value;
-  const isClone = el.voiceSelect.value === 'clone';
-  el.ttsMode.textContent = isClone
-    ? 'TTS: Clone (FireRedTTS3)'
-    : `TTS: Edge (${el.voiceSelect.selectedOptions[0]?.text?.split(' ')[0] ?? 'Ardi'})`;
+  const val = el.voiceSelect.value;
+  const opt = el.voiceSelect.selectedOptions[0];
+  const optText = opt?.text || '';
+
+  if (val === 'clone') {
+    el.ttsMode.textContent = 'TTS: Clone (FireRedTTS3)';
+  } else if (val.startsWith('fish')) {
+    const shortName = optText.split('(')[0].split('–')[0].trim() || 'Fish';
+    el.ttsMode.textContent = `TTS: Fish (${shortName})`;
+  } else if (val.startsWith('elevenlabs')) {
+    const shortName = optText.split('(')[0].split('–')[0].trim() || 'ElevenLabs';
+    el.ttsMode.textContent = `TTS: 11Labs (${shortName})`;
+  } else {
+    const shortName = optText.split('(')[0].trim() || 'Edge';
+    el.ttsMode.textContent = `TTS: Edge (${shortName})`;
+  }
   prefs.set('supri-voice', tts.voice);
 });
 el.langSelect.addEventListener('change', () => {
@@ -396,7 +408,17 @@ addEventListener('keydown', (e) => {
 // ---------- Init ----------
 el.sensitivity.value = prefs.get('supri-sens', '60');
 el.voiceInterrupt.checked = prefs.get('supri-vi', '0') === '1';
-el.voiceSelect.value = prefs.get('supri-voice', 'clone');
+let savedVoice = prefs.get('supri-voice', 'clone');
+if (savedVoice === 'elevenlabs-sarah') savedVoice = 'elevenlabs:EXAVITQu4vr4xnSDxMaL';
+if (savedVoice === 'elevenlabs-brian') savedVoice = 'elevenlabs:nPczCjzI2devNBz1zQrb';
+if (savedVoice === 'elevenlabs-citra') savedVoice = 'elevenlabs:RbNgJzKAV7jpYJNtCBpj';
+if (savedVoice === 'fish') savedVoice = 'fish:b8d594e696694b499aa12e32d0c1b618';
+
+el.voiceSelect.value = savedVoice;
+if (!el.voiceSelect.value) {
+  el.voiceSelect.value = 'elevenlabs:EXAVITQu4vr4xnSDxMaL';
+  if (!el.voiceSelect.value) el.voiceSelect.value = 'clone';
+}
 el.langSelect.value = prefs.get('supri-lang', 'id-ID');
 tts.voice = el.voiceSelect.value;
 stt.lang = el.langSelect.value;
