@@ -1,0 +1,7 @@
+# Dependensi Service Python Voice Cloning (FireRedTTS3 + FastAPI)
+fastapi>=0.110.0
+uvicorn>=0.28.0
+pydantic>=2.0.0
+torch
+torchaudio
+huggingface_hub

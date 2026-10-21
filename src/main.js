@@ -50,6 +50,7 @@ let turnSeq = 0;
 let loudSince = 0;
 
 const face = new Face3D($('scene'));
+window.face = face;
 const mic = new MicMonitor();
 
 const tts = new TTSQueue({
@@ -361,7 +362,10 @@ el.voiceInterrupt.addEventListener('change', () => {
 });
 el.voiceSelect.addEventListener('change', () => {
   tts.voice = el.voiceSelect.value;
-  el.ttsMode.textContent = `TTS: Edge (${el.voiceSelect.selectedOptions[0].text.split(' ')[0]})`;
+  const isClone = el.voiceSelect.value === 'clone';
+  el.ttsMode.textContent = isClone
+    ? 'TTS: Clone (FireRedTTS3)'
+    : `TTS: Edge (${el.voiceSelect.selectedOptions[0]?.text?.split(' ')[0] ?? 'Ardi'})`;
   prefs.set('supri-voice', tts.voice);
 });
 el.langSelect.addEventListener('change', () => {
@@ -392,7 +396,7 @@ addEventListener('keydown', (e) => {
 // ---------- Init ----------
 el.sensitivity.value = prefs.get('supri-sens', '60');
 el.voiceInterrupt.checked = prefs.get('supri-vi', '0') === '1';
-el.voiceSelect.value = prefs.get('supri-voice', 'id-ID-ArdiNeural');
+el.voiceSelect.value = prefs.get('supri-voice', 'clone');
 el.langSelect.value = prefs.get('supri-lang', 'id-ID');
 tts.voice = el.voiceSelect.value;
 stt.lang = el.langSelect.value;
@@ -402,7 +406,13 @@ logEntries.forEach(renderLogEntry);
 showHint(DEFAULT_HINT);
 fetch('/api/config')
   .then((r) => r.json())
-  .then((c) => (el.modelName.textContent = `MODEL ${c.model || '—'}`))
+  .then((c) => {
+    el.modelName.textContent = `MODEL ${c.model || '—'}`;
+    if (!localStorage.getItem('supri-voice') && c.voice) {
+      el.voiceSelect.value = c.voice;
+      el.voiceSelect.dispatchEvent(new Event('change'));
+    }
+  })
   .catch(() => (el.modelName.textContent = 'SERVER OFFLINE'));
 tickClock();
 setInterval(tickClock, 1000);

@@ -1,0 +1,563 @@
+
+> <ide_opened_file>The user opened the file
+  d:\Salim\VibeCoding\supri-tiktok\PRD.md in the IDE. This may or may not be
+  related to the current task.</ide_opened_file>
+
+> coba pahami isi prd ini. lalu eksekusi
+
+  Read 1 file, ran 2 shell commands (ctrl+o to expand)
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+
+● 9router sepertinya jalan di port 20128. Saya cek model yang tersedia.
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+
+● 9router aktif tanpa key. Saya tes chat cepat ke combo-local.
+
+  Ran 3 shell commands (ctrl+o to expand)
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+
+● ag/gemini-3.8-flash-low jalan (combo-local sedang tidak tersedia). Saya lihat
+  daftar model lengkap untuk pilih fallback.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Model utama saya pilih ag/gemini-3.8-flash-low dengan fallback ke model lain.
+  Sekarang scaffold proyek dan install dependency.
+
+● Write(package.json)
+  ⎿  Wrote 12 lines to package.json
+       1 {
+       2   "name": "supri",
+       3   "version": "0.1.0",
+       5   "description": "Supri – Voice AI Assistant dengan wajah 3D wir
+         eframe",
+       6   "type": "module",
+       7   "scripts": {
+         e --watch server.js\" \"vite\"",
+       9     "build": "vite build",
+      10     "start": "node server.js"
+     … +4 lines (ctrl+o to expand)
+
+● Write(.env)
+  ⎿  Wrote 6 lines to .env
+      1 ROUTER_URL=http://127.0.0.1:20128/v1
+      2 ROUTER_KEY=sk-2f7d55d9ea82944d-mltxcq-2ede9333
+      3 # Daftar model dipisah koma: model pertama utama, sisanya fallbac
+        k otomatis
+      4 ROUTER_MODEL=ag/gemini-3.8-flash-low,ag/gemini-3.7-flash-low,nvid
+        ia/deepseek-ai/deepseek-v4-flash
+      5 TTS_VOICE=id-ID-ArdiNeural
+      6 PORT=3000
+
+● Write(.env.example)
+  ⎿  Wrote 6 lines to .env.example
+      1 ROUTER_URL=http://127.0.0.1:20128/v1
+      2 ROUTER_KEY=sk-xxxx
+      3 # Daftar model dipisah koma: model pertama utama, sisanya fallbac
+        k otomatis
+      4 ROUTER_MODEL=ag/gemini-3.8-flash-low,ag/gemini-3.7-flash-low
+      5 TTS_VOICE=id-ID-ArdiNeural
+      6 PORT=3000
+
+● Write(.gitignore)
+  ⎿  Wrote 4 lines to .gitignore
+      1 node_modules/
+      2 dist/
+      3 .env
+      4 .setting/
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+
+● Runtime deps masuk; dev deps error npm sementara (bug arborist). Coba ulang.
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+
+● Update(package.json)
+  ⎿  Added 4 lines
+      15      "msedge-tts": "^2.1.0",
+      16      "systeminformation": "^5.33.16",
+      17      "three": "^0.186.1"
+      18 +  },                                                           
+      19 +  "devDependencies": {                                         
+      20 +    "concurrently": "^9.0.0",                                  
+      21 +    "vite": "^7.0.0"                                           
+      22    }
+      23  }
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+
+● Semua terpasang. Cek API msedge-tts versi terpasang sebelum menulis endpoint
+  TTS.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Sekarang server Node.
+
+● Write(server.js)
+  ⎿  Wrote 143 lines to server.js
+       1 // Supri server: proxy LLM (9router), Edge TTS, dan monitor sist
+         em.
+       2 // API key hanya hidup di sini (.env), tidak pernah dikirim ke b
+       3 import 'dotenv/config';
+       4 import express from 'express';
+       5 import { existsSync } from 'node:fs';
+       6 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
+       8
+       9 const {
+      10   ROUTER_URL = 'http://127.0.0.1:20128/v1',
+     … +153 lines (ctrl+o to expand)
+
+● Write(vite.config.js)  ⎿  Wrote 11 lines to vite.config.js
+       1 import { defineConfig } from 'vite';
+       2
+       3 export default defineConfig({
+       4   root: 'src',
+       5   publicDir: 'assets-public',
+       6   build: { outDir: '../dist', emptyOutDir: true },
+       7   server: {
+       8     port: 5173,
+       9     proxy: { '/api': 'http://localhost:3000' },
+      10   },
+     … +1 line (ctrl+o to expand)
+
+● Tes server dulu (chat + TTS) sebelum frontend.
+
+● Update(vite.config.js)
+  ⎿  Removed 1 line
+      2  
+      3  export default defineConfig({
+      4    root: 'src',
+      5 -  publicDir: 'assets-public',                                   
+      5    build: { outDir: '../dist', emptyOutDir: true },
+      6    server: {
+      7      port: 5173,
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Backend jalan: chat streaming OK, Edge TTS OK (1 detik). Tapi first-byte LLM
+  5,6 detik — terlalu lambat untuk target <3 detik. Saya benchmark beberapa
+  model cepat.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Latensi tergantung upstream 9router (~4–5 detik first-byte untuk model gratis
+  yang tersedia; beberapa model 503/410). Saya set fallback ke model yang
+  terbukti hidup.
+
+● Update(.env)
+  ⎿  Added 1 line, removed 1 line
+      1  ROUTER_URL=http://127.0.0.1:20128/v1
+      2  ROUTER_KEY=sk-2f7d55d9ea82944d-mltxcq-2ede9333
+      3  # Daftar model dipisah koma: model pertama utama, sisanya fallba
+         ck otomatis
+      4 -ROUTER_MODEL=ag/gemini-3.8-flash-low,ag/gemini-3.7-flash-low,nvi
+        -dia/deepseek-ai/deepseek-v4-flash                               
+      4 +ROUTER_MODEL=ag/gemini-3.8-flash-low,ag/gpt-oss-120b-medium,ag/g
+        +emini-3.7-flash-low                                             
+      5  TTS_VOICE=id-ID-ArdiNeural
+      6  PORT=3000
+
+● Backend siap. Sekarang frontend: HTML/CSS HUD.
+
+● Write(src\index.html)
+  ⎿  Wrote 114 lines to src\index.html
+       1 <!doctype html>
+       2 <html lang="id">
+       4     <meta charset="UTF-8" />
+       5     <meta name="viewport" content="width=device-width, initial-s
+         cale=1.0" />
+       7     <link rel="preconnect" href="https://fonts.googleapis.com" /
+         >
+       8     <link
+         ht@500;700&family=Share+Tech+Mono&display=swap"
+      10       rel="stylesheet"
+     … +120 lines (ctrl+o to expand)
+
+● Write(src\hud.css)
+  ⎿  Wrote 293 lines to src\hud.css
+       1 :root {
+       2   --bg: #020812;
+       3   --bg-2: #061426;
+       4   --blue: #2aa8ff;
+       5   --blue-dim: rgba(42, 168, 255, 0.35);
+       6   --blue-faint: rgba(42, 168, 255, 0.12);
+       7   --green: #39ff88;
+       8   --amber: #ffc24a;
+       9   --red: #ff4d5e;
+      10   --text: #cfeaff;
+     … +317 lines (ctrl+o to expand)
+
+● Karena belum ada aset .glb berlisensi bebas, saya akan membuat kepala 3D
+  prosedural dengan lip-sync, yang nantinya otomatis tergantikan jika file
+  head.glb berblendshape ditempatkan di src/public/.
+
+● Write(src\face3d.js)
+  ⎿  Wrote 443 lines to src\face3d.js
+      1 // Scene Three.js: kepala wireframe neon + mata + lip-sync.
+         Jika ada /head.glb
+      3 // dengan morph target `jawOpen`/`mouthOpen`, model itu dipakai s
+      4 import * as THREE from 'three';
+      5 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        tComposer.js';
+      7 import { RenderPass } from 'three/addons/postprocessing/RenderPas
+      8 import { UnrealBloomPass } from 'three/addons/postprocessing/Unre
+        alBloomPass.js';
+        s.js';
+     … +498 lines (ctrl+o to expand)
+
+● Update(src\face3d.js)
+  ⎿  Added 1 line, removed 1 line
+      201  class GltfHead {
+      202    constructor(root) {
+      203      this.group = new THREE.Group();
+      204 -    this.wireMat = new THREE.MeshBasicMaterial({ color: BLUE.c
+          -lone(), wireframe: true, transparent: true, opacity: 0.6, morp
+          -hTargets: true });                                            
+      204 +    this.wireMat = new THREE.MeshBasicMaterial({ color: BLUE.c
+          +lone(), wireframe: true, transparent: true, opacity: 0.6 });  
+      205      this.morphs = [];
+      206      this.eyeMeshes = [];
+      207      root.traverse((o) => {
+
+● Write(src\chat.js)
+  ⎿  Wrote 93 lines to src\chat.js
+       1 // Streaming chat ke server (/api/chat), format SSE OpenAI-compa
+         tible.
+       3 /**
+       4  * @param {{role:string, content:string}[]} messages
+       5  * @param {{signal?: AbortSignal, onDelta?: (text:string)=>void}
+       6  * @returns {Promise<string>} teks jawaban lengkap
+       7  */
+       8 export async function streamChat(messages, { signal, onDelta } =
+       9   const res = await fetch('/api/chat', {
+      10     method: 'POST',
+     … +91 lines (ctrl+o to expand)
+
+● Write(src\tts.js)
+  ⎿  Wrote 178 lines to src\tts.js
+       1 // Antrian TTS: Edge TTS via server (utama, bisa dianalisis untu
+         k lip-sync akurat)
+       2 // dengan cadangan speechSynthesis browser (lip-sync simulasi).
+       4 export class TTSQueue {
+       5   /**
+       6    * @param {{onStart?:()=>void, onIdle?:()=>void, onFallback?:(
+         reason:string)=>void}} hooks
+       8   constructor(hooks = {}) {
+       9     this.hooks = hooks;
+      10     this.voice = 'id-ID-ArdiNeural';
+     … +179 lines (ctrl+o to expand)
+
+● Write(src\stt.js)
+  ⎿  Wrote 106 lines to src\stt.js
+       1 // Speech-to-Text (Web Speech API) + monitor level mic (waveform
+         , sensitivitas, voice interrupt).
+       3 const SR = window.SpeechRecognition || window.webkitSpeechRecogn
+         ition;
+       4 export const sttSupported = Boolean(SR);
+       6 export class STT {
+       7   /**
+       8    * @param {{onInterim?:(t:string)=>void, onFinal?:(t:string)=>
+       9    */
+      10   constructor(hooks = {}) {
+     … +104 lines (ctrl+o to expand)
+
+● Update(src\tts.js)
+  ⎿  Removed 1 line
+      83    }
+      84  
+      85    async #fetchAudio(text, gen) {
+      86 -    if (this.mode === 'fallback-only') return null;            
+      86      const ac = new AbortController();
+      87      this.controllers.add(ac);
+      88      try {
+
+● Update(src\tts.js)
+  ⎿  Removed 1 line
+      12      this.playing = false;
+      13      this.gen = 0;
+      14      this.controllers = new Set();
+      15 -    this.mode = 'edge';                                        
+      15      this.fakeLevel = 0;
+      16      this.boundaryKick = 0;
+      17      this.speakingFallback = false;
+
+● Write(src\main.js)
+  ⎿  Wrote 409 lines to src\main.js
+       1 // Orkestrasi: state machine IDLE → LISTENING → THINKING → SPEAK
+         ING → LISTENING.
+       3 import { STT, MicMonitor, sttSupported } from './stt.js';
+       4 import { TTSQueue } from './tts.js';
+       5 import { streamChat, SentenceSplitter } from './chat.js';
+       7 const $ = (id) => document.getElementById(id);
+       8 const el = {
+       9   stateLabel: $('stateLabel'), clock: $('clock'), modelName: $('
+      10   micBtn: $('micBtn'), micBtnLabel: $('micBtnLabel'), interruptB
+         tn: $('interruptBtn'),
+     … +443 lines (ctrl+o to expand)
+
+● Semua modul frontend selesai. Build untuk cek error import/sintaks.
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+
+● Build lolos. Restart server agar menyajikan dist, lalu cek tampilan dengan
+  headless Edge.
+
+● Update(vite.config.js)
+  ⎿  Added 1 line, removed 1 line
+      2  
+      3  export default defineConfig({
+      4    root: 'src',
+      5 -  build: { outDir: '../dist', emptyOutDir: true },              
+      5 +  build: { outDir: '../dist', emptyOutDir: true, chunkSizeWarnin
+        +gLimit: 1000 },                                                 
+      6    server: {
+      7      port: 5173,
+      8      proxy: { '/api': 'http://localhost:3000' },
+
+  Ran 2 shell commands (ctrl+o to expand)
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+
+● Tidak ada error app (hanya warning THREE.Clock deprecated — akan saya ganti).
+  Lihat screenshot:
+
+  Read 1 file (ctrl+o to expand)
+
+● Tampilan HUD sudah sesuai PRD, tapi kepala karakter terlihat terlalu "alien" —
+  bloom terlalu kuat sampai fitur wajah tenggelam, dagu terlalu runcing, dan
+  leher terlalu panjang. Saya akan merapikan ini sekaligus mengganti THREE.Clock
+  ke THREE.Timer.
+
+● Update(src\face3d.js)
+  ⎿  Added 5 lines, removed 3 lines
+      33    z *= 0.86;
+      34    y *= 1.02;
+      35    // Rahang/dagu mengecil ke bawah
+      36 -  const lower = smooth(0.05, -0.95, y);                        
+      37 -  x *= 1 - 0.38 * lower;                                       
+      38 -  if (z > 0) z *= 1 - 0.12 * lower;                            
+      36 +  const lower = smooth(0.0, -1.0, y);                          
+      37 +  x *= 1 - 0.3 * lower * lower;                                
+      38 +  if (z > 0) z *= 1 - 0.1 * lower;                             
+      39 +  // Sedikit lebih lebar di pelipis/rahang agar tidak berbentuk
+         + telur                                                         
+      40 +  x *= 1 + 0.06 * gauss((y + 0.35) ** 2, 0.08);                
+      41    // Tempurung belakang sedikit menonjol
+      42    if (z < 0) z *= 1 + 0.1 * smooth(-0.2, 0.6, y);
+      43    if (z > 0) {
+
+● Update(src\face3d.js)
+  ⎿  Added 3 lines, removed 3 lines
+      43    if (z > 0) {
+      44      const ax = Math.abs(x);
+      45      // Hidung
+      46 -    z += 0.17 * gauss(x * x, 0.006) * gauss((y + 0.08) ** 2, 0.
+         -035) * smooth(0.1, 0.18, y + 0.32);                            
+      46 +    z += 0.22 * gauss(x * x, 0.005) * gauss((y + 0.1) ** 2, 0.0
+         +3) * smooth(0.1, 0.18, y + 0.32);                              
+      47      // Rongga mata
+      48 -    z -= 0.06 * gauss((ax - 0.25) ** 2, 0.01) * gauss((y - 0.13
+         -) ** 2, 0.006);                                                
+      48 +    z -= 0.08 * gauss((ax - 0.25) ** 2, 0.01) * gauss((y - 0.13
+         +) ** 2, 0.006);                                                
+      49      // Alis
+      50 -    z += 0.035 * gauss((y - 0.26) ** 2, 0.003) * smooth(0.48, 0
+         -.2, ax);                                                       
+      50 +    z += 0.05 * gauss((y - 0.26) ** 2, 0.003) * smooth(0.48, 0.
+         +2, ax);                                                        
+      51      // Tulang pipi
+      52      x += Math.sign(x) * 0.03 * gauss((y + 0.05) ** 2, 0.02) * s
+          mooth(0.2, 0.6, z);
+      53      // Bibir sedikit maju
+
+● Update(src\face3d.js)
+  ⎿  Added 3 lines, removed 3 lines
+      154    }
+      155  
+      156    #buildNeck() {
+      157 -    const geo = new THREE.CylinderGeometry(0.3, 0.42, 0.75, 20
+          -, 5, true);                                                   
+      158 -    const mat = new THREE.MeshBasicMaterial({ color: BLUE.clon
+          -e(), wireframe: true, transparent: true, opacity: 0.25 });    
+      157 +    const geo = new THREE.CylinderGeometry(0.3, 0.38, 0.5, 20,
+          + 4, true);                                                    
+      158 +    const mat = new THREE.MeshBasicMaterial({ color: BLUE.clon
+          +e(), wireframe: true, transparent: true, opacity: 0.2 });     
+      159      const neck = new THREE.Mesh(geo, mat);
+      160 -    neck.position.set(0, -1.12, -0.12);                       
+      160 +    neck.position.set(0, -1.0, -0.15);                        
+      161      this.group.add(neck);
+      162      this.neckMat = mat;
+      163    }
+
+● Update(src\face3d.js)
+  ⎿  Added 1 line, removed 1 line
+      282  
+      283      this.composer = new EffectComposer(renderer);
+      284      this.composer.addPass(new RenderPass(this.scene, this.came
+           ra));
+      285 -    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 
+          -0.9, 0.5, 0.05);                                              
+      285 +    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 
+          +0.5, 0.35, 0.12);                                             
+      286      this.composer.addPass(this.bloom);
+      287      this.composer.addPass(new OutputPass());
+      288  
+
+● Update(src\face3d.js)
+  ⎿  Added 2 lines, removed 2 lines
+      293      this.#resize();
+      294      this.#tryLoadGltf();
+      295  
+      296 -    this.clock = new THREE.Clock();                           
+      297 -    renderer.setAnimationLoop(() => this.#tick());            
+      296 +    this.timer = new THREE.Timer();                           
+      297 +    renderer.setAnimationLoop((now) => this.#tick(now));      
+      298    }
+      299  
+      300    #buildRings() {
+
+● Update(src\face3d.js)
+  ⎿  Added 6 lines, removed 5 lines
+      378      this.mouthTarget = Math.min(1, Math.max(0, v));
+      379    }
+      380  
+      381 -  #tick() {                                                   
+      382 -    const dt = Math.min(this.clock.getDelta(), 0.05);         
+      383 -    const t = this.clock.elapsedTime;                         
+      381 +  #tick(now) {                                                
+      382 +    this.timer.update(now);                                   
+      383 +    const dt = Math.min(this.timer.getDelta(), 0.05);         
+      384 +    const t = this.timer.getElapsed();                        
+      385      const s = this.state;
+      386  
+      387      // Rotasi mengikuti mouse + idle sway
+      387 -    const sway = s === 'SPEAKING' ? 0.05 : 0.025;             
+      388 -    const ty = this.mouse.x * 0.45 + Math.sin(t * 0.5) * sway;
+      388 +    const sway = s === 'SPEAKING' ? 0.08 : 0.12;              
+      389 +    const ty = this.mouse.x * 0.45 + Math.sin(t * 0.35) * sway
+          +;                                                             
+      390      const tx = this.mouse.y * 0.22 + Math.sin(t * 0.7) * sway 
+           * 0.5;
+      391      this.rig.rotation.y = lerp(this.rig.rotation.y, ty, 1 - Ma
+           th.exp(-dt * 3));
+      392      this.rig.rotation.x = lerp(this.rig.rotation.x, tx, 1 - Ma
+           th.exp(-dt * 3));
+
+● Update(src\face3d.js)
+  ⎿  Added 2 lines, removed 2 lines
+      397      this.rig.position.y = Math.sin(t * 1.6) * 0.015 + 0.1;
+      398  
+      399      // Warna & cahaya per state
+      400 -    let wire = BLUE, eye = EYE_DIM, glow = 1, opacity = 0.5;  
+      401 -    if (s === 'LISTENING') { eye = GREEN; glow = 1; opacity = 
+          -0.55; }                                                       
+      400 +    let wire = BLUE, eye = EYE_DIM, glow = 1.6, opacity = 0.38
+          +;                                                             
+      401 +    if (s === 'LISTENING') { eye = GREEN; glow = 1; opacity = 
+          +0.42; }                                                       
+      402      if (s === 'THINKING') {
+      403        wire = BLUE.clone().lerp(AMBER, 0.35 + 0.35 * Math.sin(t
+            * 6));
+      404        eye = GREEN;
+
+● Update(src\face3d.js)
+  ⎿  Added 2 lines, removed 2 lines
+      403        wire = BLUE.clone().lerp(AMBER, 0.35 + 0.35 * Math.sin(t
+            * 6));
+      404        eye = GREEN;
+      405        glow = 0.6;
+      406 -      opacity = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(t * 6));    
+      406 +      opacity = 0.25 + 0.3 * (0.5 + 0.5 * Math.sin(t * 6));   
+      407      }
+      408 -    if (s === 'SPEAKING') { eye = GREEN; glow = 1.2 + this.mou
+          -th * 0.8; opacity = 0.6; }                                    
+      408 +    if (s === 'SPEAKING') { eye = GREEN; glow = 1.2 + this.mou
+          +th * 0.8; opacity = 0.45; }                                   
+      409      const k = 1 - Math.exp(-dt * 6);
+      410      this.wireColor.lerp(wire, k);
+      411      this.eyeColor.lerp(eye, k);
+
+● Update(src\face3d.js)
+  ⎿  Added 1 line, removed 1 line
+      412      this.eyeGlow = lerp(this.eyeGlow, glow, k);
+      413      this.head.setColors(this.wireColor, this.eyeColor, this.ey
+           eGlow);
+      414      this.head.setWireOpacity(opacity);
+      415 -    this.bloom.strength = 0.75 + (s === 'SPEAKING' ? this.mout
+          -h * 0.5 : 0) + (s === 'THINKING' ? 0.25 : 0);                 
+      415 +    this.bloom.strength = 0.5 + (s === 'SPEAKING' ? this.mouth
+          + * 0.35 : 0) + (s === 'THINKING' ? 0.2 : 0);                  
+      416  
+      417      // Kedip: acak, lebih sering saat THINKING
+      418      this.blinkT += dt;
+
+● Tambah parameter ?pose=SPEAKING (pratinjau state tanpa mic/AI) untuk
+  memverifikasi gerak mulut secara visual.
+
+● Update(src\main.js)
+  ⎿  Added 3 lines, removed 1 line
+      290    wctx.stroke();
+      291  }
+      292  
+      293 +// Pratinjau visual tanpa mic/AI, mis. /?pose=SPEAKING (mulut 
+          +disimulasikan).                                               
+      294 +const pose = new URLSearchParams(location.search).get('pose')?
+          +.toUpperCase();                                               
+      295  const fakeWave = new Float32Array(256);
+      296  function frame(now) {
+      295 -  const lvl = tts.level();                                    
+      297 +  const lvl = pose === 'SPEAKING' ? 0.5 + 0.5 * Math.sin(now /
+          + 90) : tts.level();                                           
+      298    face.setMouthTarget(lvl);
+      299  
+      300    const micLevel = mic.level();
+
+● Update(src\main.js)
+  ⎿  Error editing file
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  PreToolUse:PowerShell hook error
+  ⎿  Failed with non-blocking status code: /usr/bin/bash: line 1: rtk: command
+     not found
+
+● Update(src\main.js)
+  ⎿  Added 1 line
+      408  setInterval(tickClock, 1000);
+      409  pollSystem();
+      410  setInterval(pollSystem, 3000);
+      411 +if (['IDLE', 'LISTENING', 'THINKING', 'SPEAKING'].includes(pos
+          +e)) setState(pose);                                           
+      412  requestAnimationFrame(frame);
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  Interrupted · What should Claude do instead?
