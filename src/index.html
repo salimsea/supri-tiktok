@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SUPRI · Personal AI Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./hud.css" />
+  </head>
+  <body data-state="IDLE">
+    <canvas id="scene"></canvas>
+    <div class="scanlines"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">S.U.P.R.I</span>
+        <span class="brand-sub">PERSONAL AI ASSISTANT</span>
+      </div>
+      <div class="state-pill"><span class="dot"></span><span id="stateLabel">IDLE</span></div>
+      <div class="meta">
+        <span id="clock">--:--:--</span>
+        <span id="modelName" class="muted">MODEL —</span>
+      </div>
+    </header>
+
+    <aside class="panel panel-left">
+      <h2>// CONTROL</h2>
+      <button id="micBtn" class="btn btn-mic" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+        <span id="micBtnLabel">MICROPHONE OFF</span>
+      </button>
+      <button id="interruptBtn" class="btn btn-danger" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>
+        INTERRUPT
+      </button>
+      <label class="toggle">
+        <input type="checkbox" id="voiceInterrupt" />
+        <span class="track"><span class="knob"></span></span>
+        <span>VOICE INTERRUPT</span>
+      </label>
+
+      <div class="field">
+        <div class="field-head"><span>MIC SENSITIVITY</span><span id="sensValue">60%</span></div>
+        <input type="range" id="sensitivity" min="0" max="100" value="60" />
+        <div class="meter"><div id="micMeter"></div><div id="sensMarker" class="marker"></div></div>
+      </div>
+
+      <div class="field row2">
+        <label>
+          <span>SUARA</span>
+          <select id="voiceSelect">
+            <option value="id-ID-ArdiNeural">Ardi (cowok)</option>
+            <option value="id-ID-GadisNeural">Gadis (cewek)</option>
+          </select>
+        </label>
+        <label>
+          <span>BAHASA STT</span>
+          <select id="langSelect">
+            <option value="id-ID">Indonesia</option>
+            <option value="en-US">English</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="btn-row">
+        <button id="logBtn" class="btn btn-ghost">LOG</button>
+        <button id="fullBtn" class="btn btn-ghost">FULLSCREEN</button>
+      </div>
+    </aside>
+
+    <aside class="panel panel-right">
+      <h2>// SYSTEM MONITOR</h2>
+      <div class="stat"><span>CPU</span><div class="bar"><div id="cpuBar"></div></div><span id="cpuVal">--%</span></div>
+      <div class="stat"><span>RAM</span><div class="bar"><div id="ramBar"></div></div><span id="ramVal">--%</span></div>
+      <div class="stat net"><span>NET</span><span id="netVal" class="muted">↓ -- KB/s · ↑ -- KB/s</span></div>
+
+      <h2>// TRANSCRIPT</h2>
+      <div class="transcript">
+        <div class="t-label">YOU</div>
+        <div id="userLine" class="t-user muted">—</div>
+        <div class="t-label">SUPRI</div>
+        <div id="aiLine" class="t-ai muted">—</div>
+      </div>
+      <div id="ttsMode" class="muted small">TTS: Edge (Ardi)</div>
+    </aside>
+
+    <footer class="dock">
+      <canvas id="wave" height="56"></canvas>
+      <form id="cmdForm" class="cmd" autocomplete="off">
+        <span class="prompt">&gt;_</span>
+        <input id="cmdInput" placeholder="Ketik perintah lalu Enter…" aria-label="Command input" />
+        <button type="submit" class="btn btn-send">SEND</button>
+      </form>
+      <div id="hint" class="hint muted"></div>
+    </footer>
+
+    <section id="logDrawer" class="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <h2>// CONVERSATION LOG</h2>
+        <div>
+          <button id="clearLogBtn" class="btn btn-ghost small">CLEAR</button>
+          <button id="closeLogBtn" class="btn btn-ghost small">✕</button>
+        </div>
+      </div>
+      <ol id="logList" class="log"></ol>
+    </section>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "supri",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Supri – Voice AI Assistant dengan wajah 3D wireframe",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n server,vite -c cyan,magenta \"node --watch server.js\" \"vite\"",
+    "build": "vite build",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "msedge-tts": "^2.1.0",
+    "systeminformation": "^5.33.16",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "vite": "^7.0.0"
+  }
+}
