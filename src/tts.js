@@ -32,6 +32,7 @@ export class TTSQueue {
       src.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
       this.timeData = new Float32Array(this.analyser.fftSize);
+      this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
@@ -61,17 +62,52 @@ export class TTSQueue {
     this.speakingFallback = false;
     this.playing = false;
     this.fakeLevel = 0;
+    this.smoothLevel = 0;
   }
 
-  /** Level amplitudo 0..1 untuk lip-sync. */
+  /** Level amplitudo 0..1 untuk lip-sync artikulatif dan ekspresif. */
   level() {
     if (this.speakingFallback) return this.#simulatedLevel();
-    if (!this.analyser || this.audio.paused) return 0;
+    if (!this.analyser || this.audio.paused) {
+      this.smoothLevel = Math.max(0, (this.smoothLevel || 0) * 0.75);
+      return this.smoothLevel;
+    }
     this.analyser.getFloatTimeDomainData(this.timeData);
     let sum = 0;
-    for (const v of this.timeData) sum += v * v;
+    for (let i = 0; i < this.timeData.length; i++) {
+      const v = this.timeData[i];
+      sum += v * v;
+    }
     const rms = Math.sqrt(sum / this.timeData.length);
-    return Math.min(1, Math.max(0, (rms - 0.012) * 7));
+
+    if (!this.freqData || this.freqData.length !== this.analyser.frequencyBinCount) {
+      this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+    }
+    this.analyser.getByteFrequencyData(this.freqData);
+
+    // Frekuensi vokal manusia (formants F1-F2: ~180 Hz - ~2400 Hz)
+    let vocalSum = 0;
+    const binStart = 4;
+    const binEnd = Math.min(32, this.freqData.length);
+    for (let i = binStart; i < binEnd; i++) {
+      vocalSum += this.freqData[i];
+    }
+    const vocalAvg = vocalSum / ((binEnd - binStart) * 255);
+
+    // Respon terkalibrasi untuk Edge TTS & vokal manusia
+    const rmsComp = Math.min(1, Math.max(0, (rms - 0.005) * 15));
+    const vocalComp = Math.min(1, Math.max(0, (vocalAvg - 0.04) * 2.8));
+    const raw = Math.max(rmsComp * 0.65 + vocalComp * 0.35, rmsComp);
+
+    // Fast-attack, smooth-decay envelope follower
+    if (this.smoothLevel === undefined) this.smoothLevel = 0;
+    if (raw > this.smoothLevel) {
+      this.smoothLevel += (raw - this.smoothLevel) * 0.82;
+    } else {
+      this.smoothLevel += (raw - this.smoothLevel) * 0.28;
+    }
+
+    return Math.min(1, Math.max(0, this.smoothLevel));
   }
 
   /** Data gelombang untuk visualisasi waveform saat SPEAKING. */
@@ -164,13 +200,15 @@ export class TTSQueue {
     });
   }
 
-  // Opsi A: suara speechSynthesis tidak bisa dianalisis → gelombang palsu (sinus + noise)
-  // dengan lonjakan di setiap batas kata.
+  // Suara speechSynthesis tidak bisa dianalisis langsung → gelombang artikulatif
+  // dengan pola suku kata manusiawi (~3.5 suku kata/dtk) dan lonjakan di setiap batas kata.
   #simulatedLevel() {
     const t = (performance.now() - (this.fakeStart ?? 0)) / 1000;
-    const base = 0.35 + 0.25 * Math.sin(t * 13) + 0.15 * Math.sin(t * 23 + 1.3);
-    const noise = (Math.random() - 0.5) * 0.25;
-    this.boundaryKick *= 0.86;
-    return Math.min(1, Math.max(0, base + noise + this.boundaryKick * 0.5));
+    const syllable = Math.sin(t * 18);
+    const intonation = 0.52 + 0.28 * Math.sin(t * 3.8);
+    const base = Math.max(0, syllable * 0.40 + intonation * 0.60);
+    const noise = (Math.random() - 0.5) * 0.12;
+    this.boundaryKick *= 0.85;
+    return Math.min(1, Math.max(0, base + noise + this.boundaryKick * 0.45));
   }
 }

@@ -32,7 +32,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // Garis mulut (y) dan engsel rahang.
 const MOUTH_Y = -0.38;
 const JAW_PIVOT = new THREE.Vector3(0, -0.10, -0.10);
-const JAW_MAX = 0.28; // radian
+const JAW_MAX = 0.38; // radian artikulatif manusiawi
 
 /** Ubah titik di bola satuan menjadi titik di permukaan kepala yang super realistis. */
 function sculpt(p) {
@@ -383,9 +383,10 @@ class ProceduralHead {
     }
   }
 
-  setMouth(open) {
-    if (Math.abs(open - (this.lastOpen ?? -1)) < 0.003) return;
+  setMouth(open, grin = 0) {
+    if (Math.abs(open - (this.lastOpen ?? -1)) < 0.003 && Math.abs(grin - (this.lastGrin ?? -1)) < 0.01) return;
     this.lastOpen = open;
+    this.lastGrin = grin;
     const pos = this.geo.attributes.position;
     const v = new THREE.Vector3();
     const out = new THREE.Vector3();
@@ -398,9 +399,13 @@ class ProceduralHead {
     this.upperLip.geometry.setFromPoints(this.#lipPoints(open, false));
     this.lowerLip.geometry.setFromPoints(this.#lipPoints(open, true));
     const top = sculpt(new THREE.Vector3(0, MOUTH_Y, Math.sqrt(Math.max(0, 1 - MOUTH_Y ** 2))));
-    this.mouthCavity.position.set(0, top.y - open * 0.045, top.z - 0.003);
-    this.mouthCavity.scale.set(0.12, Math.max(0.001, open * 0.065), 1);
-    this.mouthCavity.visible = open > 0.03;
+    this.mouthCavity.position.set(0, top.y - open * 0.055, top.z - 0.003);
+    this.mouthCavity.scale.set(0.12 + grin * 0.03, Math.max(0.001, open * 0.095 + grin * 0.02), 1);
+    this.mouthCavity.visible = open > 0.025 || grin > 0.15;
+  }
+
+  setBrows(liftL, liftR) {
+    // Procedural fallback brows
   }
 
   setColors(wire, eye, glow) {
@@ -420,8 +425,9 @@ class ProceduralHead {
     for (const ear of this.earParts) ear.mat.opacity = clamp(o - 0.05, 0, 1);
   }
 
-  setBlink(amount) {
-    for (const eyeGroup of this.eyes) eyeGroup.scale.y = 1 - amount * 0.92;
+  setBlink(amount, squint = 0) {
+    const sy = Math.max(0.02, (1 - amount * 0.92) * (1 - squint * 0.65));
+    for (const eyeGroup of this.eyes) eyeGroup.scale.y = sy;
   }
 }
 
@@ -478,8 +484,8 @@ class GltfHead {
           const pz = (posAttr.getZ(idx) - center.z) * sInitial * FINAL_SCALE;
           return { px, py, pz };
         });
-        const inLeftEye = vWorld.every((v) => v.px < -0.17 && v.px > -0.34 && v.py > 0.055 && v.py < 0.145 && v.pz > 0.54);
-        const inRightEye = vWorld.every((v) => v.px > 0.17 && v.px < 0.34 && v.py > 0.055 && v.py < 0.145 && v.pz > 0.54);
+        const inLeftEye = vWorld.every((v) => v.px < -0.155 && v.px > -0.325 && v.py > 0.075 && v.py < 0.170 && v.pz > 0.56);
+        const inRightEye = vWorld.every((v) => v.px > 0.155 && v.px < 0.325 && v.py > 0.075 && v.py < 0.170 && v.pz > 0.56);
 
         if (!inLeftEye && !inRightEye) {
           for (const oldIdx of idxs) {
@@ -564,7 +570,7 @@ class GltfHead {
     const dotsPos = [];
     for (let i = 0; i < newPos.length; i += 3) {
       const px = newPos[i], py = newPos[i + 1], pz = newPos[i + 2];
-      const inEye = Math.abs(px) > 0.16 && Math.abs(px) < 0.34 && py > 0.04 && py < 0.16 && pz > 0.50;
+      const inEye = Math.abs(px) > 0.155 && Math.abs(px) < 0.325 && py > 0.075 && py < 0.170 && pz > 0.52;
       const inMouth = Math.abs(px) < 0.18 && py > -0.38 && py < -0.27 && pz > 0.72;
       if (!inEye && !inMouth) {
         dotsPos.push(px, py, pz);
@@ -616,10 +622,10 @@ class GltfHead {
       depthTest: false,
     });
 
-    // Posisi soket mata LeePerrySmith (simetris di depan permukaan mata)
+    // Posisi soket mata LeePerrySmith (simetris presisi sejajar bukaan kelopak mata)
     const eyeConfigs = [
-      { side: -1, x: -0.265, y: 0.096, z: 0.640, rotY: 0.06 },
-      { side: 1, x: 0.265, y: 0.096, z: 0.640, rotY: -0.06 },
+      { side: -1, x: -0.240, y: 0.123, z: 0.648, rotY: 0.065 },
+      { side: 1, x: 0.240, y: 0.123, z: 0.648, rotY: -0.065 },
     ];
 
     for (const cfg of eyeConfigs) {
@@ -658,13 +664,16 @@ class GltfHead {
       specMesh.renderOrder = 106;
       eyeGroup.add(specMesh);
 
-      // 5. Kontur kelopak mata almond hijau zamrud tegas
+      // 5. Kontur kelopak mata almond hijau zamrud tegas & simetris
       const lidPts = [];
-      const N = 24;
+      const N = 36;
+      const width = 0.076;
+      const hUpper = 0.034;
+      const hLower = 0.026;
       for (let i = 0; i <= N; i++) {
-        const t = (i / N) * 2 - 1;
-        const lx = t * 0.076;
-        const ly = (1 - t * t) * (i <= N / 2 ? 0.034 : -0.024);
+        const theta = (i / N) * Math.PI * 2;
+        const lx = Math.cos(theta) * width;
+        const ly = Math.sin(theta) > 0 ? Math.sin(theta) * hUpper : Math.sin(theta) * hLower;
         lidPts.push(new THREE.Vector3(lx, ly, 0.014));
       }
       const lidGeo = new THREE.BufferGeometry().setFromPoints(lidPts);
@@ -707,7 +716,10 @@ class GltfHead {
     );
     this.group.add(foreheadLine);
 
-    // 2. Alis (lengkungan di atas mata)
+    // 2. Alis dinamis dalam grup terpisah (agar bisa bergerak ekspresif saat bicara & mikir)
+    this.browGroupL = new THREE.Group();
+    this.browGroupR = new THREE.Group();
+
     const browPtsL = [];
     for (let i = 0; i <= 16; i++) {
       const t = i / 16;
@@ -716,7 +728,8 @@ class GltfHead {
       const z = 0.65 - t * 0.14;
       browPtsL.push(new THREE.Vector3(x, y, z + 0.010));
     }
-    const browLineL = new THREE.Line(new THREE.BufferGeometry().setFromPoints(browPtsL), this.browLineMat);
+    this.browLineL = new THREE.Line(new THREE.BufferGeometry().setFromPoints(browPtsL), this.browLineMat);
+    this.browGroupL.add(this.browLineL);
 
     const browPtsR = [];
     for (let i = 0; i <= 16; i++) {
@@ -726,10 +739,12 @@ class GltfHead {
       const z = 0.65 - t * 0.14;
       browPtsR.push(new THREE.Vector3(x, y, z + 0.010));
     }
-    const browLineR = new THREE.Line(new THREE.BufferGeometry().setFromPoints(browPtsR), this.browLineMat);
-    this.group.add(browLineL, browLineR);
+    this.browLineR = new THREE.Line(new THREE.BufferGeometry().setFromPoints(browPtsR), this.browLineMat);
+    this.browGroupR.add(this.browLineR);
 
-    // 3. Kontur & Bentuk Bibir Cyber Realistis (Presisi 1:1 Mengikuti Topologi Wajah)
+    this.group.add(this.browGroupL, this.browGroupR);
+
+    // 3. Kontur, Volume Bibir, Gigi Cyber Pearl, dan Rongga Mulut Artikulatif 3D
     this.lipLineMat = new THREE.LineBasicMaterial({
       color: BLUE_BRIGHT.clone(),
       transparent: true,
@@ -739,7 +754,7 @@ class GltfHead {
     this.lipFillMat = new THREE.MeshBasicMaterial({
       color: new THREE.Color(0x1888dd),
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.38,
       side: THREE.DoubleSide,
       depthTest: false,
     });
@@ -749,170 +764,283 @@ class GltfHead {
       opacity: 0.85,
       depthTest: false,
     });
+    this.cavityMat = new THREE.MeshBasicMaterial({
+      color: 0x000206,
+      side: THREE.DoubleSide,
+      depthTest: false,
+    });
+    this.teethMat = new THREE.MeshBasicMaterial({
+      color: 0xf0f7ff,
+      side: THREE.DoubleSide,
+      depthTest: false,
+    });
 
-    // Spline kurva bibir atas (Cupid's bow tajam & pas di model)
-    const topControlPoints = [
-      new THREE.Vector3(-0.160, -0.320, 0.758),
-      new THREE.Vector3(-0.090, -0.286, 0.816),
-      new THREE.Vector3(-0.038, -0.272, 0.838),
-      new THREE.Vector3(0.000, -0.283, 0.830),
-      new THREE.Vector3(0.038, -0.272, 0.838),
-      new THREE.Vector3(0.090, -0.286, 0.816),
-      new THREE.Vector3(0.160, -0.320, 0.758),
-    ];
-    const topCurve = new THREE.CatmullRomCurve3(topControlPoints);
-    const topPts = topCurve.getPoints(24);
-    topPts.forEach((p) => (p.z += 0.004));
-
-    // Spline celah tengah pertemuan bibir atas dan bawah
-    const seamControlPoints = [
-      new THREE.Vector3(-0.160, -0.320, 0.758),
-      new THREE.Vector3(-0.080, -0.320, 0.802),
-      new THREE.Vector3(0.000, -0.325, 0.816),
-      new THREE.Vector3(0.080, -0.320, 0.802),
-      new THREE.Vector3(0.160, -0.320, 0.758),
-    ];
-    const seamCurve = new THREE.CatmullRomCurve3(seamControlPoints);
-    const seamPts = seamCurve.getPoints(24);
-    seamPts.forEach((p) => (p.z += 0.005));
-
-    // Spline kurva bawah bibir bawah
-    const botControlPoints = [
-      new THREE.Vector3(-0.160, -0.320, 0.758),
-      new THREE.Vector3(-0.090, -0.356, 0.806),
-      new THREE.Vector3(0.000, -0.366, 0.824),
-      new THREE.Vector3(0.090, -0.356, 0.806),
-      new THREE.Vector3(0.160, -0.320, 0.758),
-    ];
-    const botCurve = new THREE.CatmullRomCurve3(botControlPoints);
-    const botPts = botCurve.getPoints(24);
-    botPts.forEach((p) => (p.z += 0.004));
-
-    // Bangun mesh volume bibir atas
+    const N = 24;
+    // Mesh volume bibir atas
     const upperGeo = new THREE.BufferGeometry();
-    const upperPos = [];
+    upperGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((N + 1) * 2 * 3), 3));
     const upperIdx = [];
-    for (let i = 0; i <= 24; i++) {
-      upperPos.push(topPts[i].x, topPts[i].y, topPts[i].z);
-      upperPos.push(seamPts[i].x, seamPts[i].y, seamPts[i].z);
-      if (i < 24) {
-        const base = i * 2;
-        upperIdx.push(base, base + 1, base + 2);
-        upperIdx.push(base + 1, base + 3, base + 2);
-      }
+    for (let i = 0; i < N; i++) {
+      const b = i * 2;
+      upperIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
     }
-    upperGeo.setAttribute('position', new THREE.Float32BufferAttribute(upperPos, 3));
     upperGeo.setIndex(upperIdx);
-    const upperMesh = new THREE.Mesh(upperGeo, this.lipFillMat);
-    upperMesh.renderOrder = 96;
-
-    // Garis kontur bibir atas & celah bibir
-    this.upperLipLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(topPts), this.lipLineMat);
-    this.upperLipLine.renderOrder = 98;
-    this.lipSeamLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(seamPts), this.lipSeamMat);
-    this.lipSeamLine.renderOrder = 97;
-    this.group.add(upperMesh, this.upperLipLine, this.lipSeamLine);
-
-    // Grup bibir bawah (bergerak dinamis bersama rahang saat bicara)
-    this.lowerLipGroup = new THREE.Group();
+    this.upperMesh = new THREE.Mesh(upperGeo, this.lipFillMat);
+    this.upperMesh.renderOrder = 96;
 
     // Mesh volume bibir bawah
     const lowerGeo = new THREE.BufferGeometry();
-    const lowerPos = [];
+    lowerGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((N + 1) * 2 * 3), 3));
     const lowerIdx = [];
-    for (let i = 0; i <= 24; i++) {
-      lowerPos.push(seamPts[i].x, seamPts[i].y, seamPts[i].z);
-      lowerPos.push(botPts[i].x, botPts[i].y, botPts[i].z);
-      if (i < 24) {
-        const base = i * 2;
-        lowerIdx.push(base, base + 1, base + 2);
-        lowerIdx.push(base + 1, base + 3, base + 2);
-      }
+    for (let i = 0; i < N; i++) {
+      const b = i * 2;
+      lowerIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
     }
-    lowerGeo.setAttribute('position', new THREE.Float32BufferAttribute(lowerPos, 3));
     lowerGeo.setIndex(lowerIdx);
-    const lowerMesh = new THREE.Mesh(lowerGeo, this.lipFillMat);
-    lowerMesh.renderOrder = 96;
+    this.lowerMesh = new THREE.Mesh(lowerGeo, this.lipFillMat);
+    this.lowerMesh.renderOrder = 96;
 
-    this.lowerLipLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(botPts), this.lipLineMat);
+    // Garis kontur luar bibir atas dan bawah
+    this.upperLipLine = new THREE.Line(new THREE.BufferGeometry(), this.lipLineMat);
+    this.upperLipLine.renderOrder = 98;
+    this.lowerLipLine = new THREE.Line(new THREE.BufferGeometry(), this.lipLineMat);
     this.lowerLipLine.renderOrder = 98;
-    this.lowerLipGroup.add(lowerMesh, this.lowerLipLine);
-    this.group.add(this.lowerLipGroup);
+    this.lipSeamLine = new THREE.Line(new THREE.BufferGeometry(), this.lipSeamMat);
+    this.lipSeamLine.renderOrder = 97;
 
-    // 4. Rongga mulut gelap pekat saat berbicara (mangap ada hitam-hitam)
-    this.mouthCavity = new THREE.Mesh(
-      new THREE.CircleGeometry(0.11, 28),
-      new THREE.MeshBasicMaterial({
-        color: 0x000000,
-        side: THREE.DoubleSide,
-        depthTest: false,
-      })
+    // Rongga mulut gelap pekat di antara bibir dalam (terlihat berdimensi saat mangap)
+    const cavGeo = new THREE.BufferGeometry();
+    cavGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((N + 1) * 2 * 3), 3));
+    const cavIdx = [];
+    for (let i = 0; i < N; i++) {
+      const b = i * 2;
+      cavIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
+    }
+    cavGeo.setIndex(cavIdx);
+    this.mouthCavity = new THREE.Mesh(cavGeo, this.cavityMat);
+    this.mouthCavity.renderOrder = 94;
+
+    // Barisan gigi cyber pearl white atas & bawah (dental arch ribbon)
+    const T = 16;
+    const uTeethGeo = new THREE.BufferGeometry();
+    uTeethGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((T + 1) * 2 * 3), 3));
+    const uTeethIdx = [];
+    for (let i = 0; i < T; i++) {
+      const b = i * 2;
+      uTeethIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
+    }
+    uTeethGeo.setIndex(uTeethIdx);
+    this.upperTeeth = new THREE.Mesh(uTeethGeo, this.teethMat);
+    this.upperTeeth.renderOrder = 95;
+
+    const lTeethGeo = new THREE.BufferGeometry();
+    lTeethGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((T + 1) * 2 * 3), 3));
+    const lTeethIdx = [];
+    for (let i = 0; i < T; i++) {
+      const b = i * 2;
+      lTeethIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
+    }
+    lTeethGeo.setIndex(lTeethIdx);
+    this.lowerTeeth = new THREE.Mesh(lTeethGeo, this.teethMat);
+    this.lowerTeeth.renderOrder = 95;
+
+    this.group.add(
+      this.mouthCavity,
+      this.upperTeeth,
+      this.lowerTeeth,
+      this.upperMesh,
+      this.lowerMesh,
+      this.upperLipLine,
+      this.lowerLipLine,
+      this.lipSeamLine
     );
-    this.mouthCavity.position.set(0, -0.324, 0.795);
-    this.mouthCavity.scale.set(1.4, 0.001, 1);
-    this.mouthCavity.renderOrder = 95;
-    this.mouthCavity.visible = false;
-    this.group.add(this.mouthCavity);
 
-    // 5. Gigi cyber pearl white di dalam rongga mulut
-    const teethMat = new THREE.LineBasicMaterial({ color: 0xe8f4ff, linewidth: 2, depthTest: false });
-    const uTeethPts = [];
-    for (let i = 0; i <= 16; i++) {
-      const t = (i / 16) * 2 - 1;
-      const x = t * 0.105;
-      const y = -0.320 - (t * t) * 0.005;
-      const z = 0.798 - (t * t) * 0.035;
-      uTeethPts.push(new THREE.Vector3(x, y, z));
-    }
-    this.upperTeeth = new THREE.Line(new THREE.BufferGeometry().setFromPoints(uTeethPts), teethMat);
-    this.upperTeeth.renderOrder = 96;
-    this.upperTeeth.visible = false;
-    this.group.add(this.upperTeeth);
-
-    const lTeethPts = [];
-    for (let i = 0; i <= 16; i++) {
-      const t = (i / 16) * 2 - 1;
-      const x = t * 0.095;
-      const y = -0.334 + (t * t) * 0.004;
-      const z = 0.790 - (t * t) * 0.035;
-      lTeethPts.push(new THREE.Vector3(x, y, z));
-    }
-    this.lowerTeeth = new THREE.Line(new THREE.BufferGeometry().setFromPoints(lTeethPts), teethMat);
-    this.lowerTeeth.renderOrder = 96;
-    this.lowerTeeth.visible = false;
-    this.lowerLipGroup.add(this.lowerTeeth);
+    // Inisialisasi bentuk mulut saat diam
+    this.#updateMouthCurves(0, 0);
   }
 
-  setMouth(open) {
+  setBrows(liftL, liftR, tiltL = 0, tiltR = 0) {
+    if (this.browGroupL) {
+      this.browGroupL.position.y = liftL;
+      this.browGroupL.rotation.z = tiltL;
+    }
+    if (this.browGroupR) {
+      this.browGroupR.position.y = liftR;
+      this.browGroupR.rotation.z = tiltR;
+    }
+  }
+
+  #updateMouthCurves(open = 0, grin = 0) {
+    const N = 24;
+    // Koordinat sudut mulut terhubung mulus tanpa robek
+    const cornerW = 0.160 + grin * 0.028 - open * 0.010;
+    const cornerY = -0.322 + grin * 0.038 - open * 0.018;
+    const cornerZ = 0.758 + grin * 0.012 - open * 0.008;
+
+    // Artikulasi bukaan mulut manusiawi:
+    // Bibir atas terangkat sedikit di tengah (Cupid's bow naik memperlihatkan gigi atas)
+    const openLift = open * 0.018;
+    // Bibir bawah turun lebih dalam mengikuti pergerakan rahang (memperlihatkan rongga & gigi bawah)
+    const openDrop = open * 0.082;
+
+    // 1. Kurva kontur luar bibir atas
+    const topControl = [
+      new THREE.Vector3(-cornerW, cornerY, cornerZ),
+      new THREE.Vector3(-0.090, -0.286 + grin * 0.016 + openLift * 0.6, 0.816),
+      new THREE.Vector3(-0.038, -0.272 + grin * 0.008 + openLift, 0.838),
+      new THREE.Vector3(0.000, -0.283 + grin * 0.008 + openLift * 0.8, 0.830),
+      new THREE.Vector3(0.038, -0.272 + grin * 0.008 + openLift, 0.838),
+      new THREE.Vector3(0.090, -0.286 + grin * 0.016 + openLift * 0.6, 0.816),
+      new THREE.Vector3(cornerW, cornerY, cornerZ),
+    ];
+    const topPts = new THREE.CatmullRomCurve3(topControl).getPoints(N);
+
+    // 2. Tepi bawah bibir atas (Upper Inner Edge)
+    const upperInnerControl = [
+      new THREE.Vector3(-cornerW, cornerY, cornerZ),
+      new THREE.Vector3(-0.080, -0.320 + grin * 0.018 + openLift * 0.7, 0.804),
+      new THREE.Vector3(0.000, -0.322 + grin * 0.010 + openLift, 0.818),
+      new THREE.Vector3(0.080, -0.320 + grin * 0.018 + openLift * 0.7, 0.804),
+      new THREE.Vector3(cornerW, cornerY, cornerZ),
+    ];
+    const upperInnerPts = new THREE.CatmullRomCurve3(upperInnerControl).getPoints(N);
+
+    // 3. Tepi atas bibir bawah (Lower Inner Edge)
+    const lowerInnerControl = [
+      new THREE.Vector3(-cornerW, cornerY, cornerZ),
+      new THREE.Vector3(-0.080, -0.320 + grin * 0.018 - openDrop * 0.75, 0.804),
+      new THREE.Vector3(0.000, -0.322 + grin * 0.010 - openDrop, 0.818),
+      new THREE.Vector3(0.080, -0.320 + grin * 0.018 - openDrop * 0.75, 0.804),
+      new THREE.Vector3(cornerW, cornerY, cornerZ),
+    ];
+    const lowerInnerPts = new THREE.CatmullRomCurve3(lowerInnerControl).getPoints(N);
+
+    // 4. Kurva kontur luar bibir bawah
+    const botControl = [
+      new THREE.Vector3(-cornerW, cornerY, cornerZ),
+      new THREE.Vector3(-0.090, -0.356 + grin * 0.015 - openDrop * 0.60, 0.806),
+      new THREE.Vector3(0.000, -0.366 + grin * 0.008 - openDrop * 0.70, 0.824),
+      new THREE.Vector3(0.090, -0.356 + grin * 0.015 - openDrop * 0.60, 0.806),
+      new THREE.Vector3(cornerW, cornerY, cornerZ),
+    ];
+    const botPts = new THREE.CatmullRomCurve3(botControl).getPoints(N);
+
+    // Update garis bibir
+    this.upperLipLine.geometry.setFromPoints(topPts);
+    this.lowerLipLine.geometry.setFromPoints(botPts);
+
+    // Garis celah bibir (terlihat saat mulut terkatup, meredup saat mulut membuka)
+    this.lipSeamLine.geometry.setFromPoints(upperInnerPts);
+    this.lipSeamLine.visible = open < 0.10;
+
+    // Update Buffer Bibir Atas
+    const uPos = this.upperMesh.geometry.attributes.position.array;
+    for (let i = 0; i <= N; i++) {
+      const idx = i * 6;
+      uPos[idx] = topPts[i].x;
+      uPos[idx + 1] = topPts[i].y;
+      uPos[idx + 2] = topPts[i].z + 0.004;
+      uPos[idx + 3] = upperInnerPts[i].x;
+      uPos[idx + 4] = upperInnerPts[i].y;
+      uPos[idx + 5] = upperInnerPts[i].z + 0.004;
+    }
+    this.upperMesh.geometry.attributes.position.needsUpdate = true;
+
+    // Update Buffer Bibir Bawah
+    const lPos = this.lowerMesh.geometry.attributes.position.array;
+    for (let i = 0; i <= N; i++) {
+      const idx = i * 6;
+      lPos[idx] = lowerInnerPts[i].x;
+      lPos[idx + 1] = lowerInnerPts[i].y;
+      lPos[idx + 2] = lowerInnerPts[i].z + 0.004;
+      lPos[idx + 3] = botPts[i].x;
+      lPos[idx + 4] = botPts[i].y;
+      lPos[idx + 5] = botPts[i].z + 0.004;
+    }
+    this.lowerMesh.geometry.attributes.position.needsUpdate = true;
+
+    // Update Rongga Mulut Gelap Pekat (Oral Cavity)
+    const cavPos = this.mouthCavity.geometry.attributes.position.array;
+    for (let i = 0; i <= N; i++) {
+      const idx = i * 6;
+      cavPos[idx] = upperInnerPts[i].x;
+      cavPos[idx + 1] = upperInnerPts[i].y;
+      cavPos[idx + 2] = upperInnerPts[i].z - 0.012;
+      cavPos[idx + 3] = lowerInnerPts[i].x;
+      cavPos[idx + 4] = lowerInnerPts[i].y;
+      cavPos[idx + 5] = lowerInnerPts[i].z - 0.012;
+    }
+    this.mouthCavity.geometry.attributes.position.needsUpdate = true;
+    this.mouthCavity.visible = open > 0.02 || grin > 0.15;
+
+    // Update Ribbon Gigi Cyber Pearl White
+    const T = 16;
+    const uTeethPos = this.upperTeeth.geometry.attributes.position.array;
+    const lTeethPos = this.lowerTeeth.geometry.attributes.position.array;
+    const teethArchW = 0.095;
+    for (let i = 0; i <= T; i++) {
+      const t = (i / T) * 2 - 1;
+      const x = t * teethArchW;
+      const curveZ = (1 - t * t) * 0.032;
+
+      // Gigi atas
+      const uYTop = -0.316 + openLift * 0.8 + (1 - t * t) * 0.003;
+      const uYBot = uYTop - 0.016;
+      const uZ = 0.796 + curveZ;
+      const uIdx = i * 6;
+      uTeethPos[uIdx] = x;
+      uTeethPos[uIdx + 1] = uYTop;
+      uTeethPos[uIdx + 2] = uZ;
+      uTeethPos[uIdx + 3] = x;
+      uTeethPos[uIdx + 4] = uYBot;
+      uTeethPos[uIdx + 5] = uZ;
+
+      // Gigi bawah (turun bersama artikulasi rahang dan bibir bawah)
+      const lYBot = -0.328 - openDrop * 0.85;
+      const lYTop = lYBot + 0.014;
+      const lZ = 0.790 + curveZ;
+      const lIdx = i * 6;
+      lTeethPos[lIdx] = x * 0.92;
+      lTeethPos[lIdx + 1] = lYTop;
+      lTeethPos[lIdx + 2] = lZ;
+      lTeethPos[lIdx + 3] = x * 0.92;
+      lTeethPos[lIdx + 4] = lYBot;
+      lTeethPos[lIdx + 5] = lZ;
+    }
+    this.upperTeeth.geometry.attributes.position.needsUpdate = true;
+    this.lowerTeeth.geometry.attributes.position.needsUpdate = true;
+    this.upperTeeth.visible = open > 0.03 || grin > 0.18;
+    this.lowerTeeth.visible = open > 0.18 || grin > 0.35;
+  }
+
+  setMouth(open, grin = 0) {
     if (this.morphs.length > 0) {
       for (const [m, i] of this.morphs) m.morphTargetInfluences[i] = open;
     }
-    if (this.jawWeights && this.jawWeights.length > 0) {
-      if (Math.abs(open - (this.lastOpen ?? -1)) < 0.003) return;
+
+    const openChanged = Math.abs(open - (this.lastOpen ?? -1)) > 0.002;
+    const grinChanged = Math.abs(grin - (this.lastGrin ?? -1)) > 0.008;
+
+    if (openChanged || grinChanged) {
       this.lastOpen = open;
-      const pos = this.geo.attributes.position;
-      const v = new THREE.Vector3();
-      const out = new THREE.Vector3();
-      for (const [i, w] of this.jawWeights) {
-        v.set(this.basePos[i * 3], this.basePos[i * 3 + 1], this.basePos[i * 3 + 2]);
-        rotateAroundPivot(v, open * 0.22 * w, out, this.jawPivot);
-        pos.setXYZ(i, out.x, out.y, out.z);
-      }
-      pos.needsUpdate = true;
+      this.lastGrin = grin;
 
-      // Gerakkan bibir bawah turun saat rahang terbuka
-      if (this.lowerLipGroup) {
-        this.lowerLipGroup.position.y = -open * 0.048;
-      }
+      // Update seluruh kurva dan mesh bibir, rongga mulut, dan gigi
+      this.#updateMouthCurves(open, grin);
 
-      // Rongga mulut hitam tampak saat mulut membuka ("mangap ada hitam-hitam")
-      if (this.mouthCavity) {
-        this.mouthCavity.scale.set(1.35, Math.max(0.001, open * 0.42), 1);
-        this.mouthCavity.position.y = -0.324 - open * 0.024;
-        this.mouthCavity.visible = open > 0.025;
+      // Deformasi rahang bawah pada mesh kepala manusia LeePerrySmith
+      if (this.jawWeights && this.jawWeights.length > 0) {
+        const pos = this.geo.attributes.position;
+        const v = new THREE.Vector3();
+        const out = new THREE.Vector3();
+        // Faktor rotasi 0.38 radian menghasilkan artikulasi rahang yang jelas dan manusiawi
+        for (const [i, w] of this.jawWeights) {
+          v.set(this.basePos[i * 3], this.basePos[i * 3 + 1], this.basePos[i * 3 + 2]);
+          rotateAroundPivot(v, open * 0.38 * w, out, this.jawPivot);
+          pos.setXYZ(i, out.x, out.y, out.z);
+        }
+        pos.needsUpdate = true;
       }
-      if (this.upperTeeth) this.upperTeeth.visible = open > 0.035;
-      if (this.lowerTeeth) this.lowerTeeth.visible = open > 0.035;
     }
   }
 
@@ -940,13 +1068,369 @@ class GltfHead {
     if (this.lipFillMat) this.lipFillMat.opacity = clamp(o * 0.65, 0, 0.45);
   }
 
-  setBlink(amount) {
+  setBlink(amount, squint = 0) {
     if (this.blinks && this.blinks.length > 0) {
-      for (const [m, i] of this.blinks) if (i !== undefined) m.morphTargetInfluences[i] = amount;
+      for (const [m, i] of this.blinks) if (i !== undefined) m.morphTargetInfluences[i] = Math.max(amount, squint * 0.75);
     }
+    const sy = Math.max(0.02, (1 - amount * 0.96) * (1 - squint * 0.65));
     for (const eyeGroup of this.eyes) {
-      eyeGroup.scale.y = Math.max(0.02, 1 - amount * 0.96);
+      eyeGroup.scale.y = sy;
+      eyeGroup.position.y = 0.123 + squint * 0.006;
     }
+  }
+}
+
+/**
+ * MoshBackdrop: Dynamic commercial-style solid color backdrop.
+ * Bergaya visual iklan pop streetwear / kinetic typography / bold color blocking.
+ * Berayun ke kiri & kanan secara energetik di belakang kepala saat moshing lagu iPhonekupi.
+ */
+class MoshBackdrop {
+  constructor() {
+    this.group = new THREE.Group();
+    this.group.position.set(0, 0.08, -1.6);
+    this.group.visible = false;
+
+    this.opacity = 0;
+    this.targetOpacity = 0;
+    this.materials = [];
+    this.currentPalette = 0;
+    this.lastPaletteBeat = -999;
+
+    this.palettes = [
+      {
+        left: 0xff0055,       // Vivid Hot Pink
+        right: 0xffe600,      // Electric Yellow
+        divider: 0x080811,    // Midnight Black
+        disc: 0x00f0ff,       // Cyan
+        discInner: 0xff0055,  // Pink
+        stripe: 0x11111a,     // Deep Black
+        bannerBg: '#ffe600',
+        bannerText: '#080811',
+        banner2Bg: '#ff0055',
+        banner2Text: '#ffffff',
+      },
+      {
+        left: 0x00e5ff,       // Neon Cyan
+        right: 0xff4b00,      // Hot Orange
+        divider: 0xffffff,    // White
+        disc: 0xffea00,       // Bright Yellow
+        discInner: 0x00e5ff,  // Cyan
+        stripe: 0x0c0f18,     // Obsidian
+        bannerBg: '#00e5ff',
+        bannerText: '#080811',
+        banner2Bg: '#ff4b00',
+        banner2Text: '#ffffff',
+      },
+      {
+        left: 0x7928ca,       // Cyber Violet
+        right: 0x39ff14,      // Lime Acid
+        divider: 0xffea00,    // Sun Yellow
+        disc: 0xff007f,       // Magenta
+        discInner: 0x7928ca,  // Violet
+        stripe: 0x0a0316,     // Dark Violet
+        bannerBg: '#39ff14',
+        bannerText: '#0a0316',
+        banner2Bg: '#7928ca',
+        banner2Text: '#ffffff',
+      },
+      {
+        left: 0xff1744,       // Crimson Red
+        right: 0x2979ff,      // Cobalt Blue
+        divider: 0xffffff,    // Pure White
+        disc: 0xffea00,       // Neon Yellow
+        discInner: 0xff1744,  // Red
+        stripe: 0x0d1117,     // Dark Slate
+        bannerBg: '#ffea00',
+        bannerText: '#0d1117',
+        banner2Bg: '#2979ff',
+        banner2Text: '#ffffff',
+      },
+      {
+        left: 0x0e0e14,       // Ultra Dark Solid
+        right: 0xf0f4f8,      // Clean Bold White
+        divider: 0xff0055,    // Hot Pink
+        disc: 0xffe600,       // Acid Yellow
+        discInner: 0x0e0e14,  // Dark
+        stripe: 0xff007f,     // Pink Hazard
+        bannerBg: '#ff0055',
+        bannerText: '#ffffff',
+        banner2Bg: '#f0f4f8',
+        banner2Text: '#0e0e14',
+      },
+    ];
+
+    const regMat = (mat, baseOpacity = 1.0) => {
+      mat.userData = { baseOpacity };
+      this.materials.push(mat);
+      return mat;
+    };
+
+    // --- Layer 1: Base Solid Color Split Panels (Kiri & Kanan) ---
+    this.bgLayer = new THREE.Group();
+    this.bgLayer.position.z = -0.25;
+    this.group.add(this.bgLayer);
+
+    const panelGeo = new THREE.PlaneGeometry(12, 16);
+    this.leftMat = regMat(new THREE.MeshBasicMaterial({
+      color: this.palettes[0].left,
+      transparent: true,
+      opacity: 0,
+      depthWrite: true,
+      toneMapped: false,
+    }));
+    this.leftPanel = new THREE.Mesh(panelGeo, this.leftMat);
+    this.leftPanel.position.x = -6.0;
+    this.bgLayer.add(this.leftPanel);
+
+    this.rightMat = regMat(new THREE.MeshBasicMaterial({
+      color: this.palettes[0].right,
+      transparent: true,
+      opacity: 0,
+      depthWrite: true,
+      toneMapped: false,
+    }));
+    this.rightPanel = new THREE.Mesh(panelGeo, this.rightMat);
+    this.rightPanel.position.x = 6.0;
+    this.bgLayer.add(this.rightPanel);
+
+    // Garis pemisah vertikal tengah (Divider line tebal solid)
+    const divGeo = new THREE.PlaneGeometry(0.14, 16);
+    this.dividerMat = regMat(new THREE.MeshBasicMaterial({
+      color: this.palettes[0].divider,
+      transparent: true,
+      opacity: 0,
+      depthWrite: true,
+      toneMapped: false,
+    }));
+    this.divider = new THREE.Mesh(divGeo, this.dividerMat);
+    this.divider.position.z = 0.02;
+    this.bgLayer.add(this.divider);
+
+    // --- Layer 2: Graphic Geometric Cutouts & Stripes ---
+    this.shapesLayer = new THREE.Group();
+    this.shapesLayer.position.z = -0.10;
+    this.group.add(this.shapesLayer);
+
+    // Lingkaran Pop Art / Disc besar di tengah belakang kepala
+    const discGeo = new THREE.RingGeometry(1.65, 2.35, 48);
+    this.discMat = regMat(new THREE.MeshBasicMaterial({
+      color: this.palettes[0].disc,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: true,
+      toneMapped: false,
+    }));
+    this.disc = new THREE.Mesh(discGeo, this.discMat);
+    this.disc.position.set(0, 0.12, 0);
+    this.shapesLayer.add(this.disc);
+
+    // Lingkaran dalam solid
+    const innerDiscGeo = new THREE.CircleGeometry(1.15, 48);
+    this.innerDiscMat = regMat(new THREE.MeshBasicMaterial({
+      color: this.palettes[0].discInner,
+      transparent: true,
+      opacity: 0,
+      depthWrite: true,
+      toneMapped: false,
+    }), 0.85);
+    this.innerDisc = new THREE.Mesh(innerDiscGeo, this.innerDiscMat);
+    this.innerDisc.position.set(0, 0.12, -0.01);
+    this.shapesLayer.add(this.innerDisc);
+
+    // Garis-garis aksen grafis miring (Dynamic Stripes)
+    const stripeGeo = new THREE.PlaneGeometry(14, 0.35);
+    this.stripeMat = regMat(new THREE.MeshBasicMaterial({
+      color: this.palettes[0].stripe,
+      transparent: true,
+      opacity: 0,
+      depthWrite: true,
+      toneMapped: false,
+    }), 0.9);
+
+    this.stripe1 = new THREE.Mesh(stripeGeo, this.stripeMat);
+    this.stripe1.position.set(-1.0, 1.95, 0.02);
+    this.stripe1.rotation.z = -0.18;
+    this.shapesLayer.add(this.stripe1);
+
+    this.stripe2 = new THREE.Mesh(stripeGeo, this.stripeMat);
+    this.stripe2.position.set(1.0, -1.75, 0.02);
+    this.stripe2.rotation.z = -0.18;
+    this.shapesLayer.add(this.stripe2);
+
+    // Balok aksen horizontal
+    const barGeo = new THREE.PlaneGeometry(3.5, 0.22);
+    this.barLeft = new THREE.Mesh(barGeo, this.discMat);
+    this.barLeft.position.set(-3.6, 0.12, 0.03);
+    this.shapesLayer.add(this.barLeft);
+
+    this.barRight = new THREE.Mesh(barGeo, this.discMat);
+    this.barRight.position.set(3.6, 0.12, 0.03);
+    this.shapesLayer.add(this.barRight);
+
+    // --- Layer 3: Kinetic Typography Tapes (Streetwear Marquee Banners) ---
+    this.tapesLayer = new THREE.Group();
+    this.tapesLayer.position.z = 0.05;
+    this.group.add(this.tapesLayer);
+
+    const banner1 = this.#createTapeCanvas(
+      '★ IPHONEKUPI ★ MOSHPIT PARTY ★ SUPRI LIVE ★ DROP THE BASS ★ SOUND ON ★ ',
+      this.palettes[0].bannerBg,
+      this.palettes[0].bannerText
+    );
+    this.tape1Tex = banner1.texture;
+    this.tape1Canvas = banner1.canvas;
+    this.tape1Ctx = banner1.ctx;
+    this.tape1Text = '★ IPHONEKUPI ★ MOSHPIT PARTY ★ SUPRI LIVE ★ DROP THE BASS ★ SOUND ON ★ ';
+
+    const tape1Geo = new THREE.PlaneGeometry(18, 0.52);
+    this.tape1Mat = regMat(new THREE.MeshBasicMaterial({
+      map: this.tape1Tex,
+      transparent: true,
+      opacity: 0,
+      depthWrite: true,
+      toneMapped: false,
+    }));
+    this.tape1 = new THREE.Mesh(tape1Geo, this.tape1Mat);
+    this.tape1.position.set(0, 1.45, 0);
+    this.tape1.rotation.z = -0.045;
+    this.tapesLayer.add(this.tape1);
+
+    const banner2 = this.#createTapeCanvas(
+      '/// HEADBANG /// SENGGOL DONG /// TAP TAP LAYAR /// GASKEUN /// SUPRI VIBES /// ',
+      this.palettes[0].banner2Bg,
+      this.palettes[0].banner2Text
+    );
+    this.tape2Tex = banner2.texture;
+    this.tape2Canvas = banner2.canvas;
+    this.tape2Ctx = banner2.ctx;
+    this.tape2Text = '/// HEADBANG /// SENGGOL DONG /// TAP TAP LAYAR /// GASKEUN /// SUPRI VIBES /// ';
+
+    const tape2Geo = new THREE.PlaneGeometry(18, 0.52);
+    this.tape2Mat = regMat(new THREE.MeshBasicMaterial({
+      map: this.tape2Tex,
+      transparent: true,
+      opacity: 0,
+      depthWrite: true,
+      toneMapped: false,
+    }));
+    this.tape2 = new THREE.Mesh(tape2Geo, this.tape2Mat);
+    this.tape2.position.set(0, -1.35, 0);
+    this.tape2.rotation.z = 0.038;
+    this.tapesLayer.add(this.tape2);
+  }
+
+  #createTapeCanvas(text, bgColor, textColor) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    this.#drawTapeCanvas(ctx, canvas.width, canvas.height, text, bgColor, textColor);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.repeat.set(2, 1);
+    return { canvas, ctx, texture };
+  }
+
+  #drawTapeCanvas(ctx, w, h, text, bgColor, textColor) {
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, w, h);
+
+    // Border strip kontras
+    ctx.fillStyle = textColor;
+    ctx.fillRect(0, 0, w, 6);
+    ctx.fillRect(0, h - 6, w, 6);
+
+    // Teks bold sans
+    ctx.font = '900 46px "Orbitron", Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, w / 2, h / 2 + 2);
+  }
+
+  #updatePalette(palIndex) {
+    const pal = this.palettes[palIndex];
+    if (!pal) return;
+    this.leftMat.color.setHex(pal.left);
+    this.rightMat.color.setHex(pal.right);
+    this.dividerMat.color.setHex(pal.divider);
+    this.discMat.color.setHex(pal.disc);
+    this.innerDiscMat.color.setHex(pal.discInner);
+    this.stripeMat.color.setHex(pal.stripe);
+
+    if (this.tape1Ctx) {
+      this.#drawTapeCanvas(this.tape1Ctx, 1024, 128, this.tape1Text, pal.bannerBg, pal.bannerText);
+      this.tape1Tex.needsUpdate = true;
+    }
+    if (this.tape2Ctx) {
+      this.#drawTapeCanvas(this.tape2Ctx, 1024, 128, this.tape2Text, pal.banner2Bg, pal.banner2Text);
+      this.tape2Tex.needsUpdate = true;
+    }
+  }
+
+  update(dt, t, isMoshing) {
+    this.targetOpacity = isMoshing ? 1.0 : 0.0;
+    this.opacity = lerp(this.opacity, this.targetOpacity, 1 - Math.exp(-dt * 9));
+
+    if (this.opacity < 0.005) {
+      if (this.group.visible) this.group.visible = false;
+      return;
+    }
+    if (!this.group.visible) this.group.visible = true;
+
+    // Terapkan opacity ke semua material
+    for (const mat of this.materials) {
+      mat.opacity = this.opacity * (mat.userData.baseOpacity ?? 1.0);
+    }
+
+    if (!isMoshing && this.opacity < 0.02) return;
+
+    const beat = t * 8.6; // Tempo moshing ~130 BPM
+
+    // Ganti palet warna solid setiap 16 beat (~3.7 detik)
+    const currentBeat16 = Math.floor(beat / 16);
+    if (currentBeat16 !== this.lastPaletteBeat) {
+      this.lastPaletteBeat = currentBeat16;
+      this.currentPalette = (this.currentPalette + 1) % this.palettes.length;
+      this.#updatePalette(this.currentPalette);
+    }
+
+    // Gerakan goyang kiri-kanan utama (Sway & Inertia)
+    // Gerakan horizontal yang dinamis dan punchy agar terasa seperti di iklan aksi moshing!
+    const swayPrimary = Math.sin(beat) * 0.72;
+    const swaySecondary = Math.cos(beat * 0.5) * 0.38;
+    const totalSwayX = swayPrimary + swaySecondary;
+
+    // Gerak tilt / roll miring kiri-kanan
+    const tiltZ = -Math.sin(beat) * 0.11;
+
+    // Beat bounce & pulse punch
+    const kick = Math.pow(Math.max(0, Math.sin(beat * 2)), 3.5);
+    const pulseScale = 1.0 + kick * 0.07;
+    const bounceY = 0.08 + Math.abs(Math.sin(beat)) * 0.07;
+
+    // Terapkan gerakan ke group root
+    this.group.position.x = totalSwayX * 0.85;
+    this.group.position.y = bounceY;
+    this.group.rotation.z = tiltZ;
+    this.group.scale.set(pulseScale, pulseScale, 1.0);
+
+    // Parallax antar-layer: layer shapes dan tapes bergeser dengan kecepatan berbeda
+    this.bgLayer.position.x = -totalSwayX * 0.15;
+    this.shapesLayer.position.x = totalSwayX * 0.28;
+    this.tapesLayer.position.x = -totalSwayX * 0.22;
+
+    // Putaran disc pop art di belakang kepala
+    this.disc.rotation.z = t * 1.8;
+    this.innerDisc.scale.setScalar(1.0 + kick * 0.12);
+
+    // Marquee scrolling tape banner teks horizontal
+    if (this.tape1Tex) this.tape1Tex.offset.x -= dt * 0.42;
+    if (this.tape2Tex) this.tape2Tex.offset.x += dt * 0.48;
   }
 }
 
@@ -962,6 +1446,19 @@ export class Face3D {
     this.eyeColor = EYE_DIM.clone();
     this.eyeGlow = 1;
 
+    // Mimik ekspresi: senyum/nyengir dan mata sipit
+    this.grin = 0;
+    this.grinTarget = 0;
+    this.squint = 0;
+    this.squintTarget = 0;
+    this.laughTimer = 0;
+    this.isMoshing = false;
+
+    // Bahasa tubuh presenter & tolehan dinamis ke audiens (saat SPEAKING)
+    this.speechYawZone = 0;          // Arah toleh audiens (-0.35 s/d +0.35 rad)
+    this.speechNextShift = 0;        // Jadwal waktu ganti sudut pandang presenter
+    this.speechLastState = 'IDLE';   // Pelacak transisi state
+
     // Gerakan pandangan acak alami (autonomous natural wander)
     this.wanderTargetY = 0;
     this.wanderTargetX = 0;
@@ -976,6 +1473,10 @@ export class Face3D {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
     this.camera.position.set(0, 0.08, 6.5);
+
+    // Backdrop iklan moshing warna solid di belakang wajah
+    this.moshBackdrop = new MoshBackdrop();
+    this.scene.add(this.moshBackdrop.group);
 
     this.rig = new THREE.Group();
     this.scene.add(this.rig);
@@ -1034,6 +1535,11 @@ export class Face3D {
   }
 
   setState(state) {
+    if (this.state !== state && state === 'SPEAKING') {
+      // Pemicu awal saat mulai bicara: tentukan sudut toleh presenter perdana
+      this.speechYawZone = (Math.random() < 0.5 ? -1 : 1) * (0.24 + Math.random() * 0.12);
+      this.speechNextShift = this.timer ? this.timer.getElapsed() + 1.8 + Math.random() * 1.4 : 2.0;
+    }
     this.state = state;
   }
 
@@ -1042,60 +1548,175 @@ export class Face3D {
     this.mouthTarget = Math.min(1, Math.max(0, v));
   }
 
+  /** Pemicu tawa: mata menyipit senang & wajah nyengir lebar. */
+  triggerLaugh(duration = 2.8) {
+    this.laughTimer = duration;
+  }
+
+  /** Aktifkan mode joget mosing tempo cepat kiri-kanan. */
+  setMoshing(active) {
+    this.isMoshing = !!active;
+    if (!active) {
+      this.grinTarget = 0;
+      this.squintTarget = 0;
+    }
+  }
+
+  setGrin(v) {
+    this.grinTarget = clamp(v, 0, 1);
+  }
+
+  setSquint(v) {
+    this.squintTarget = clamp(v, 0, 1);
+  }
+
   #tick(now) {
     this.timer.update(now);
     const dt = Math.min(this.timer.getDelta(), 0.05);
     const t = this.timer.getElapsed();
     const s = this.state;
 
-    // Gerakan otonom alami:
-    // Saat SPEAKING: wajib hadap lurus ke tengah (center), plus anggukan artikulasi bicara halus
-    // Saat IDLE / LISTENING: sesekali menoleh santai ke kiri/kanan secara acak, lalu kembali ke tengah
-    if (s === 'SPEAKING') {
-      this.wanderTargetY = 0;
-      this.wanderTargetX = 0;
-      this.wanderTargetZ = 0;
-      // Kunci tetap di tengah selama bicara dan 2 detik setelah selesai bicara
-      this.wanderNextChange = t + 2.0;
+    // Update backdrop iklan moshing warna solid di belakang kepala
+    if (this.moshBackdrop) {
+      this.moshBackdrop.update(dt, t, this.isMoshing);
+    }
+
+    // Gerakan kepala: Mode Mosing vs Mode Normal
+    if (this.isMoshing) {
+      // Joget mosing energetik tempo cepat (~130 BPM)
+      const beat = t * 8.6;
+      const moshRoll = Math.sin(beat) * 0.22;               // goyang miring z kiri-kanan
+      const moshYaw = Math.cos(beat * 0.5) * 0.35;          // menoleh y kiri-kanan
+      const moshPitch = -0.10 + Math.sin(beat * 2) * 0.18;  // headbang x angguk cepat
+      const moshBounce = Math.abs(Math.sin(beat)) * 0.06;   // lompat mantul naik-turun
+      const moshSwayX = Math.sin(beat * 0.5) * 0.14;        // translasi badan x kiri-kanan
+
+      this.rig.rotation.z = lerp(this.rig.rotation.z, moshRoll, 0.26);
+      this.rig.rotation.y = lerp(this.rig.rotation.y, moshYaw, 0.26);
+      this.rig.rotation.x = lerp(this.rig.rotation.x, moshPitch, 0.26);
+      this.rig.position.x = lerp(this.rig.position.x, moshSwayX, 0.26);
+      this.rig.position.y = 0.08 + moshBounce;
+
+      // Saat mosing mimik muka heboh: mata agak sipit senang dan senyum nyengir
+      this.squintTarget = 0.50 + Math.sin(beat) * 0.25;
+      this.grinTarget = 0.80 + Math.sin(beat * 0.5) * 0.20;
     } else {
-      if (t > this.wanderNextChange) {
-        // 45% peluang kembali ke tepat tengah, 55% menoleh santai kiri atau kanan
-        if (Math.random() < 0.45) {
-          this.wanderTargetY = 0;
-          this.wanderTargetX = (Math.random() - 0.5) * 0.04;
-          this.wanderTargetZ = 0;
-        } else {
-          // Lirik kiri/kanan acak alami (-12 sampai +12 derajat)
-          this.wanderTargetY = (Math.random() - 0.5) * 0.42;
-          this.wanderTargetX = (Math.random() - 0.5) * 0.08;
-          this.wanderTargetZ = (Math.random() - 0.5) * 0.03;
+      // Gerakan otonom alami normal:
+      // Saat SPEAKING: ekspresi presenter lincah (toleh kiri-kanan ke audiens, goyang badan luwes, angguk aksentuasi)
+      // Saat IDLE / LISTENING: sesekali menoleh santai ke kiri/kanan acak
+      if (s === 'SPEAKING') {
+        // Deteksi awal mulai bicara -> langsung aktifkan tolehan presenter dinamis
+        if (this.speechLastState !== 'SPEAKING') {
+          this.speechYawZone = (Math.random() < 0.5 ? -1 : 1) * (0.24 + Math.random() * 0.12);
+          this.speechNextShift = t + 1.8 + Math.random() * 1.4;
+          this.speechLastState = 'SPEAKING';
         }
-        this.wanderNextChange = t + 2.5 + Math.random() * 3.5;
+
+        // Pergantian fokus audiens presenter secara berkala (tiap 1.8 - 3.4 detik)
+        if (t > this.speechNextShift) {
+          const curr = this.speechYawZone;
+          let next;
+          if (Math.abs(curr) < 0.1) {
+            // Sedang di tengah -> toleh ke kiri atau kanan
+            next = (Math.random() < 0.5 ? -1 : 1) * (0.26 + Math.random() * 0.12);
+          } else if (curr < -0.1) {
+            // Sedang di kiri -> bisa ke tengah (35%) atau menyeberang ke kanan (65%)
+            next = Math.random() < 0.35 ? 0 : (0.26 + Math.random() * 0.12);
+          } else {
+            // Sedang di kanan -> bisa ke tengah (35%) atau menyeberang ke kiri (65%)
+            next = Math.random() < 0.35 ? 0 : -(0.26 + Math.random() * 0.12);
+          }
+          this.speechYawZone = next;
+          this.speechNextShift = t + 2.0 + Math.random() * 1.6;
+        }
+
+        // 1. Tolehan dinamis (Yaw / kiri-kanan presenter ke berbagai sudut audiens)
+        // Padukan fokus zona audiens utama dengan gelombang mikro intonasi bicara
+        const microYaw = Math.sin(t * 2.2) * 0.08 * (0.4 + 0.6 * this.mouth);
+        const targetYaw = this.speechYawZone + microYaw;
+
+        // 2. Goyang tubuh & kepala kiri-kanan (Horizontal Translation / Body Sway)
+        // Tubuh bergeser santai luwes layaknya pembicara di panggung atau streamer TikTok
+        const bodySwayCycle = Math.sin(t * 1.6) * 0.09 + Math.sin(t * 0.8) * 0.04;
+        const targetPosX = (this.speechYawZone * 0.38) + bodySwayCycle;
+
+        // 3. Kemiringan kepala luwes (Roll / Head Tilt penyeimbang dan aksen santai)
+        const speechRoll = -targetPosX * 0.26 + Math.sin(t * 2.4 + 0.5) * 0.045 * (0.35 + 0.65 * this.mouth);
+
+        // 4. Anggukan artikulasi penekanan kata (Pitch aksentuasi suku kata)
+        const speechPitch = -0.025 + (Math.sin(t * 4.4) * 0.045 + Math.sin(t * 2.2) * 0.025) * (0.30 + 0.70 * this.mouth);
+
+        // 5. Pantulan vertikal ritmis napas & energi bicara
+        const speechBounce = Math.sin(t * 3.2) * 0.010 + Math.sin(t * 6.4) * 0.005 * this.mouth;
+
+        // Smooth damping tanpa jeda kaku
+        const smoothYaw = 3.6;
+        const smoothPos = 3.2;
+        const smoothPitch = 5.0;
+        const smoothRoll = 4.2;
+
+        this.rig.rotation.y = lerp(this.rig.rotation.y, targetYaw, 1 - Math.exp(-dt * smoothYaw));
+        this.rig.rotation.x = lerp(this.rig.rotation.x, speechPitch, 1 - Math.exp(-dt * smoothPitch));
+        this.rig.rotation.z = lerp(this.rig.rotation.z, speechRoll, 1 - Math.exp(-dt * smoothRoll));
+
+        this.rig.position.x = lerp(this.rig.position.x, targetPosX, 1 - Math.exp(-dt * smoothPos));
+        this.rig.position.y = 0.08 + Math.sin(t * 1.5) * 0.008 + speechBounce;
+      } else {
+        this.speechLastState = s;
+        // Kembalikan posisi x perlahan ke netral (0) saat IDLE / LISTENING / THINKING
+        if (!this.isMoshing) {
+          this.rig.position.x = lerp(this.rig.position.x, 0, 1 - Math.exp(-dt * 3.2));
+        }
+
+        if (t > this.wanderNextChange) {
+          if (Math.random() < 0.45) {
+            this.wanderTargetY = 0;
+            this.wanderTargetX = (Math.random() - 0.5) * 0.04;
+            this.wanderTargetZ = 0;
+          } else {
+            this.wanderTargetY = (Math.random() - 0.5) * 0.42;
+            this.wanderTargetX = (Math.random() - 0.5) * 0.08;
+            this.wanderTargetZ = (Math.random() - 0.5) * 0.03;
+          }
+          this.wanderNextChange = t + 2.5 + Math.random() * 3.5;
+        }
+
+        const idleSwayY = s === 'IDLE' ? Math.sin(t * 0.6) * 0.015 : 0;
+        const idleSwayX = s === 'IDLE' ? Math.sin(t * 1.1) * 0.008 : 0;
+
+        const ty = this.wanderTargetY + idleSwayY;
+        const tx = this.wanderTargetX + idleSwayX;
+        const tz = this.wanderTargetZ;
+
+        const smoothRate = 1.8;
+        this.rig.rotation.y = lerp(this.rig.rotation.y, ty, 1 - Math.exp(-dt * smoothRate));
+        this.rig.rotation.x = lerp(this.rig.rotation.x, tx, 1 - Math.exp(-dt * smoothRate));
+        this.rig.rotation.z = lerp(this.rig.rotation.z, tz, 1 - Math.exp(-dt * smoothRate));
+
+        const breathAmp = s === 'IDLE' ? 0.006 : 0.003;
+        const breath = 1 + Math.sin(t * 1.4) * breathAmp;
+        this.rig.scale.setScalar(breath);
+        this.rig.position.y = Math.sin(t * 1.4) * 0.010 + 0.08;
       }
     }
 
-    // Mikro-gerakan pernapasan dan artikulasi suara
-    const speechNod = s === 'SPEAKING' ? Math.sin(t * 6.5) * 0.018 * this.mouth : 0;
-    const idleSwayY = s === 'IDLE' ? Math.sin(t * 0.6) * 0.015 : 0;
-    const idleSwayX = s === 'IDLE' ? Math.sin(t * 1.1) * 0.008 : 0;
+    // Mimik ketawa (mata sipit & wajah nyengir)
+    if (this.laughTimer > 0) {
+      this.laughTimer -= dt;
+      this.squintTarget = 0.85;
+      this.grinTarget = 0.95;
+      // Getaran tawa halus di kepala ("hehehe")
+      this.rig.rotation.x += Math.sin(t * 24) * 0.014 * Math.min(1, this.laughTimer);
+      this.rig.position.y += Math.sin(t * 24) * 0.005 * Math.min(1, this.laughTimer);
+    } else if (!this.isMoshing) {
+      this.squintTarget = lerp(this.squintTarget, 0, dt * 3.0);
+      this.grinTarget = lerp(this.grinTarget, 0, dt * 3.0);
+    }
 
-    const ty = this.wanderTargetY + idleSwayY;
-    const tx = this.wanderTargetX + speechNod + idleSwayX;
-    const tz = this.wanderTargetZ;
+    this.grin = lerp(this.grin, this.grinTarget, 1 - Math.exp(-dt * 8));
+    this.squint = lerp(this.squint, this.squintTarget, 1 - Math.exp(-dt * 8));
 
-    // Haluskan interpolasi rotasi (saat bicara lebih cepat mengunci ke tengah)
-    const smoothRate = s === 'SPEAKING' ? 4.5 : 1.8;
-    this.rig.rotation.y = lerp(this.rig.rotation.y, ty, 1 - Math.exp(-dt * smoothRate));
-    this.rig.rotation.x = lerp(this.rig.rotation.x, tx, 1 - Math.exp(-dt * smoothRate));
-    this.rig.rotation.z = lerp(this.rig.rotation.z, tz, 1 - Math.exp(-dt * smoothRate));
-
-    // Napas pelan
-    const breathAmp = s === 'IDLE' ? 0.006 : 0.003;
-    const breath = 1 + Math.sin(t * 1.4) * breathAmp;
-    this.rig.scale.setScalar(breath);
-    this.rig.position.y = Math.sin(t * 1.4) * 0.010 + 0.08;
-
-    // Warna & cahaya per state — mata hijau menyala selalu tampak jelas (sesuai gambar)
+    // Warna & cahaya per state
     let wire = BLUE, eye = GREEN, glow = 1.4, opacity = 0.52;
     if (s === 'IDLE') {
       eye = GREEN;
@@ -1118,15 +1739,26 @@ export class Face3D {
       glow = 1.6 + this.mouth * 1.1;
       opacity = 0.58;
     }
+    if (this.isMoshing) {
+      wire = new THREE.Color(0xff0088).lerp(BLUE_BRIGHT, 0.5 + 0.5 * Math.sin(t * 8.6));
+      eye = GREEN_BRIGHT;
+      glow = 1.8 + Math.sin(t * 8.6) * 0.5;
+      opacity = 0.65;
+    }
     const k = 1 - Math.exp(-dt * 6);
     this.wireColor.lerp(wire, k);
     this.eyeColor.lerp(eye, k);
     this.eyeGlow = lerp(this.eyeGlow, glow, k);
     this.head.setColors(this.wireColor, this.eyeColor, this.eyeGlow);
     this.head.setWireOpacity(opacity);
-    this.bloom.strength = 0.38 + (s === 'SPEAKING' ? this.mouth * 0.20 : 0) + (s === 'THINKING' ? 0.12 : 0);
 
-    // Kedip: acak, lebih sering saat THINKING
+    if (this.isMoshing) {
+      this.bloom.strength = 0.45 + Math.sin(t * 8.6) * 0.12;
+    } else {
+      this.bloom.strength = 0.38 + (s === 'SPEAKING' ? this.mouth * 0.20 : 0) + (s === 'THINKING' ? 0.12 : 0);
+    }
+
+    // Kedip: acak, terpengaruh mata sipit
     this.blinkT += dt;
     let blink = 0;
     if (this.blinkT > this.nextBlink) {
@@ -1137,14 +1769,50 @@ export class Face3D {
         this.nextBlink = s === 'THINKING' ? 0.3 + Math.random() * 0.5 : 2.5 + Math.random() * 4;
       }
     }
-    this.head.setBlink(blink);
+    this.head.setBlink(blink, this.squint);
 
-    // Lip-sync: mulut hanya bergerak saat SPEAKING
+    // Alis dinamis manusiawi (gerakan intonasi saat bicara, ekspresi mikir, dan ketawa)
+    if (this.head.setBrows) {
+      if (s === 'SPEAKING') {
+        const browPulse = Math.sin(t * 3.6) * 0.014 + (this.mouth > 0.35 ? 0.010 : 0);
+        const browAsym = Math.sin(t * 1.8) * 0.004;
+        this.head.setBrows(browPulse + browAsym, browPulse - browAsym * 0.6, browAsym * 1.2, -browAsym * 0.8);
+      } else if (s === 'THINKING') {
+        const furrow = -0.010 + Math.sin(t * 2.5) * 0.003;
+        this.head.setBrows(furrow, furrow, -0.05, 0.05);
+      } else if (this.laughTimer > 0 || this.grin > 0.25) {
+        const happyLift = 0.014 + this.grin * 0.008;
+        this.head.setBrows(happyLift, happyLift);
+      } else {
+        this.head.setBrows(0, 0);
+      }
+    }
+
+    // Tatapan mata dinamis & mikro-lirikan (micro-saccades) seperti manusia
+    const saccadeT = t * 0.8;
+    const lookX = Math.sin(saccadeT) > 0.75 ? 0.0035 : (Math.sin(saccadeT) < -0.75 ? -0.0035 : 0);
+    const lookY = Math.sin(saccadeT * 1.4) * 0.002;
+    // Saat berbicara presentasi, tatapan mata ikut menyapa sudut audiens yang sedang dilihat
+    const presenterEyeX = s === 'SPEAKING' ? clamp(this.speechYawZone * 0.012, -0.004, 0.004) : 0;
+    const finalLookX = lookX + presenterEyeX;
+
+    for (const eyeGroup of this.head.eyes || []) {
+      if (eyeGroup.children[1]) {
+        eyeGroup.children[1].position.x = lerp(eyeGroup.children[1].position.x, finalLookX, 0.12);
+        eyeGroup.children[1].position.y = lerp(eyeGroup.children[1].position.y, lookY, 0.12);
+      }
+      if (eyeGroup.children[2]) {
+        eyeGroup.children[2].position.x = lerp(eyeGroup.children[2].position.x, finalLookX, 0.12);
+        eyeGroup.children[2].position.y = lerp(eyeGroup.children[2].position.y, lookY, 0.12);
+      }
+    }
+
+    // Lip-sync & artikulasi rahang / senyum nyengir
     const target = s === 'SPEAKING' ? this.mouthTarget : 0;
-    const rate = target > this.mouth ? 28 : 14;
+    const rate = target > this.mouth ? 26 : 14;
     this.mouth = lerp(this.mouth, target, 1 - Math.exp(-dt * rate));
     if (this.mouth < 0.002) this.mouth = 0;
-    this.head.setMouth(this.mouth);
+    this.head.setMouth(this.mouth, this.grin);
 
     this.composer.render();
   }

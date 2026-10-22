@@ -38,11 +38,25 @@
 
 ## 3. Status Terkini Fitur & Modul
 
-### A. Wajah 3D & Lip-Sync (`src/face3d.js`)
-- **Model 3D**: Menggunakan `public/LeePerrySmith.glb` dan `src/public/LeePerrySmith.glb`.
-- **Koreksi Simetri**: Dilakukan penambahan `FINAL_OFFSET_X = 0.032` pada vertex mesh agar ujung hidung berada tepat di sumbu tengah $X = 0.0004$.
-- **Mata**: Sumbu soket mata diselaraskan pada $X = \pm 0.265$.
-- **Bibir & Rongga Mulut**: Kurva spline bibir atas (*Cupid's bow*), celah mulut, dan bibir bawah sejajar lurus dengan ujung hidung. Saat berbicara, rahang turun membuka rongga mulut hitam alami dengan pergerakan simetris.
+### A. Wajah 3D & Lip-Sync (`src/face3d.js`, `src/tts.js`)
+- **Model 3D**: Menggunakan `public/head.glb` (model kepala 3D manusia LeePerrySmith) dengan fallback kepala prosedural.
+- **Koreksi Simetri**: Dilakukan penambahan `FINAL_OFFSET_X = 0.032` pada vertex mesh agar ujung hidung, filtrum, dan mulut berada tepat di sumbu tengah $X = 0.0004$.
+- **Mata & Tatapan Hidup**: Sumbu soket mata diselaraskan presisi simetris pada $X = \pm 0.240$, ketinggian dinaikkan ke $Y = 0.123$ (sejajar sempurna dengan bukaan kelopak mata 3D model), kontur kelopak mata almond parametrik tertutup, pupil hitam bulat pekat manusia, serta dilengkapi mikro-lirikan (*micro-saccades*) halus dinamis agar mata tampak hidup berinteraksi dengan penonton live.
+- **Artikulasi Mulut & Mimik Wajah Manusiawi Saat Berbicara (`SPEAKING`)**:
+  - **Kurva Bibir Dinamis & Celah Mulut**: Sudut mulut terhubung kontinu tanpa robek (`cornerW, cornerY, cornerZ`). Bibir atas terangkat di bagian tengah (*Cupid's bow lift*) memperlihatkan barisan gigi atas, dan bibir bawah membuka turun secara dalam (*open drop*) seiring artikulasi vokal.
+  - **Dental Arch Ribbon (Gigi Cyber Pearl White)**: Barisan gigi 3D pearl white atas dan bawah dengan aksen berkilau bersih di dalam rongga mulut, tampil jelas dan kontras saat berbicara maupun saat tersenyum/nyengir.
+  - **Rongga Mulut Hitam Pekat (Depth Interior Cavity)**: Menghubungkan bibir dalam atas dan bawah ke kedalaman $Z$, memberikan ilusi rongga mulut 3D yang nyata dan kontras tinggi dari sudut pandang penonton.
+  - **Deformasi Rahang Bawah**: Faktor rotasi rahang bawah ditingkatkan menjadi $0.38$ radian sehingga struktur dagu dan pipi wireframe bergerak turun secara tegas dan dinamis.
+  - **Alis Dinamis (Conversational Eyebrow Gestures)**: Alis kiri dan kanan bergerak naik-turun selaras dengan intonasi suku kata bicara dan sedikit asimetris alami manusia (`setBrows`), mengernyit saat berpikir (`THINKING`), dan terangkat riang saat tersenyum/tertawa.
+  - **Bahasa Tubuh & Gestur Presenter Saat Bicara (Dynamic Presenter Sway & Gaze Shifts)**:
+    - **Anti-Kaku Satu Arah**: Kepala dan tubuh tidak lagi terpaku menghadap lurus ke depan, melainkan menoleh dinamis ke kiri dan kanan menyapa berbagai sudut audiens stream layaknya presenter panggung / host TikTok live yang ekspresif.
+    - **Audience Focus Yaw Switching**: Mengubah target sudut toleh secara berkala (tiap 1.8 - 3.4 detik) bergantian antara penonton sisi kiri ($-15^\circ$ s/d $-22^\circ$), tengah, dan kanan ($+15^\circ$ s/d $+22^\circ$) berpadu dengan osilasi mikro ritmis artikulasi suara.
+    - **Translasi Tubuh & Goyang Badan (Horizontal Body Sway)**: Seluruh badan dan rig kepala berayun horizontal luwes ($X \approx \pm 0.12$ unit) mengikuti pergeseran berat badan pembicara.
+    - **Kemiringan Kepala Luwes (Roll / Head Tilt)**: Kemiringan leher otomatis menyeimbangkan ayunan badan dengan aksen gestur santai.
+    - **Anggukan Artikulasi (Pitch Nod)**: Anggukan ritmis penekanan suku kata dan kata penting yang terhubung dengan bukaan mulut.
+    - **Gaze Direction Following**: Tatapan mata (pupil) secara cerdas ikut mengarahkan fokus ke sudut audiens yang sedang disapa.
+    - **Transisi Mulus (Zero Snapping)**: Damping eksponensial (`smoothRate`) menjamin peralihan sudut toleh sangat luwes dan otomatis meluncur kembali ke posisi tengah netral saat kembali ke status `IDLE`.
+  - **Lip-Sync Audio Formant Processing (`src/tts.js`)**: `level()` menggabungkan analisis domain waktu (RMS) dengan analisis domain frekuensi vokal manusia (formants F1-F2: 180 Hz - 2400 Hz) serta envelope follower (*fast-attack, smooth-decay*), menghasilkan respons bukaan mulut yang proporsional dan ekspresif ($0.45 - 0.85$ saat berbicara normal).
 
 ### B. Backend Node.js (`server.js`)
 - **Port**: `3000`.
@@ -53,7 +67,7 @@
   - **Fish Audio**: Memanggil `https://api.fish.audio/v1/tts` dengan model gratis `s2.1-pro-free`.
   - **Microsoft Edge TTS**: Cadangan gratis & responsif (`id-ID-ArdiNeural`, `id-ID-GadisNeural`, `en-US-GuyNeural`, `en-US-JennyNeural`).
   - **Fallback Cerdas**: Jika provider eksternal offline atau limit tercapai, otomatis dialihkan ke Edge TTS tanpa membuat audio macet di UI.
-- **Normalisasi Ejaan Angka**: `DEFAULT_PERSONA` diatur agar LLM menuliskan angka, tanggal, dan singkatan sebagai kata/ejaan (misal *"jam tujuh malam"*, bukan *"19:00"*) sesuai PRD 17.5.
+- **Persona Host TikTok Live (Gen Z)**: `DEFAULT_PERSONA` diatur sebagai **Supri, Cowok AI Streamer TikTok** dengan gaya bicara anak Gen Z Indonesia yang gaul, santai, ceplas-ceplos, dan kocak (panggilan "gue/gw" dan "lu/lo", slang "bjir", "riil", "kocak", "santuy", "spill", menyapa nama penonton live, dan mengajak tap-tap layar). Dilengkapi **Pantangan Mutlak**: Supri dilarang *break character* atau beralasan teknis seperti *"gue cuma wireframe/gambar/program"* atau *"omongan gue ngarang"*; ia harus percaya diri menganggap dirinya benar-benar punya suara dan sedang live stream. Respons singkat 2-3 kalimat, tanpa emoji, tanpa markdown, dan angka/singkatan wajib dieja.
 - **Monitor Sistem (`/api/system`)**: Membaca CPU, RAM, dan statistik transfer jaringan via `systeminformation`.
 - **Konfigurasi (`/api/config`)**: Menyediakan konfigurasi model aktif dan status TTS engine.
 
@@ -65,7 +79,42 @@
   4. `🐟 FISH AUDIO` (Raffi Ahmad `ca7021b2022d4b0fa84f53b67511b2c0`, Prabowo `b8d594e696694b499aa12e32d0c1b618`, Narator Berita Olahraga `d0b314896b3a479aa5cb04c29a8e9e25`, Ola Narator `666f0c8d71484f1980523d00141629a0`, & Fish Default via model gratis `s2.1-pro-free`)
   5. `🌐 MICROSOFT EDGE TTS` (Ardi, Gadis, Guy, Jenny)
 - Teks HUD status TTS diperbarui secara dinamis mengikuti nama suara terpilih (misal: `TTS: 11Labs (Roger)`, `TTS: Fish (Raffi Ahmad)`, `TTS: Fish (Narator Berita Olahraga)`).
-- **Lip-Sync**: `AnalyserNode` di `src/tts.js` membaca audio buffer (baik WAV maupun MP3) secara langsung untuk menggerakkan bibir 3D dan gelombang *waveform* di dock bawah.
+- **Lip-Sync & Mimik Wajah Ekspresif**: `AnalyserNode` di `src/tts.js` membaca audio buffer untuk menggerakkan bibir 3D dan waveform neon. Dilengkapi mimik tawa otomatis: saat kalimat terdeteksi tertawa (*"wkwk"*, *"haha"*, *"kocak"*, *"lucu"*, dll.), mata menyipit senang (*eyes squinting/sipit*) dan sudut mulut tertarik lebar tersenyum/nyengir (*grin*) menampakkan gigi cyber mutiara putih dengan getaran tawa halus. Terdapat juga senyum acak berkala saat IDLE agar mimik wajah hidup dan seru.
+- **Fitur Lagu Iphonekupi & Joget Mosing**:
+  - File audio: `assets/music/song-iphonekupi.mp3` (disajikan via `public/music/song-iphonekupi.mp3` dan `/music/song-iphonekupi.mp3`).
+  - Trigger: user berbicara atau mengetik perintah seperti *"stel lagu iphonekupi"*, *"putar lagu iphonekupi"*, *"iphonekupi"*, atau klik tombol HUD `[🎵 IPHONEKUPI MOSH]`.
+  - Animasi: kepala 3D melakukan gerakan *moshpit / headbanging* energetik (goyang miring kiri-kanan, angguk headbang naik-turun cepat, lompat mantul) dengan mata sipit dan senyum nyengir gembira, lampu neon berubah magenta/pink berpendar, dan waveform neon merespons musik.
+  - **Background Iklan Moshing Warna Solid Bergerak Kiri-Kanan (`MoshBackdrop` di `src/face3d.js`)**:
+    - Ditempatkan tepat di belakang wajah 3D ($Z = -1.6$) dengan multi-layer parallax 3D.
+    - **Visual Pop Art & Iklan Komersial**: Menggunakan panel split-color blocking warna solid cerah (lebar 24 unit, tinggi 16 unit), divider kontras, central pop graphic disc berputar di belakang kepala, dynamic accent stripes miring, dan dua pita horizontal *kinetic typography marquee banner* (`"★ IPHONEKUPI ★ MOSHPIT PARTY ★ SUPRI LIVE ★ DROP THE BASS ★"` dan `"/// HEADBANG /// SENGGOL DONG /// TAP TAP LAYAR /// GASKEUN ///"`).
+    - **Sinkronisasi Gerak Kiri-Kanan**: Background berayun ke kiri dan kanan secara dramatis ($X \approx \pm 0.85$ unit) selaras dengan beat lagu dan goyangan kepala, lengkap dengan tilt rotasi $Z$ dinamis dan beat kick scale pulse.
+    - **Color Cycling 5 Palet Solid**: Otomatis berganti snap-cut tiap 16 beat antara 5 palet warna solid iklan (Hot Pink & Electric Yellow, Neon Cyan & Pop Orange, Cyber Violet & Lime Acid, Crimson & Cobalt Blue, Monochrome High-Contrast).
+    - **Transisi Mulus**: Fade-in halus saat musik dimulai dan fade-out otomatis kembali ke background sci-fi gelap saat moshing selesai.
+  - Audio Ducking: saat Supri berbicara di tengah lagu, volume musik mengecil otomatis menjadi 25% agar suara TTS tetap terdengar jelas. Musik bisa dihentikan kapan saja via perintah suara (*"stop lagu"*, *"berhenti"*) atau tombol `INTERRUPT` / `ESC`.
+- **Modul TikTok Live Connector, Smart Chat Queue & Auto-Sapa Penonton Join**:
+  - Library: `tiktok-live-connector` (Node.js).
+  - Backend Endpoints (`server.js`):
+    - `POST /api/tiktok/connect`: Memulai koneksi real-time ke room streamer TikTok (`uniqueId`).
+    - `POST /api/tiktok/disconnect`: Memutus koneksi stream.
+    - `GET /api/tiktok/status`: Status room, username, jumlah penonton, error.
+    - `GET /api/tiktok/events`: Server-Sent Events (SSE) stream (`chat`, `gift`, `member`, `viewers`, `like`, `connected`, `disconnected`).
+    - `POST /api/tiktok/test-event`: Endpoint simulasi testing untuk gift, chat, dan member join.
+  - Frontend (`src/main.js`, `src/index.html`, `src/hud.css`):
+    - Widget kontrol live di panel kanan (`.tiktok-box`): input `@username_live`, tombol `[CONNECT]` / `[DISCONNECT]`, badge status (`OFFLINE` / `CONNECTING` / `LIVE`), live viewer count, toggle checkbox `Sapa penonton baru join`, dan notifikasi antrean chat.
+    - **Fitur Sapa Penonton Baru Join (`member` event)**:
+      - Begitu ada penonton baru bergabung ke live stream, Supri otomatis menyapa: *"Halo ka [nama], selamat datang di live!"* dengan variasi template ramah khas host Gen Z.
+      - **Pembersihan Nama Cerdas (`cleanViewerName`)**: Menghilangkan emoji, tagar, dan simbol agar ucapan TTS terdengar jelas dan natural.
+      - **Anti-Spam Deduplication (60s)**: Penonton yang sama tidak akan disapa berulang kali dalam jeda 60 detik.
+      - **Smart Batching**: Jika beberapa penonton masuk berdekatan, Supri menggabungkan sapaan (*"Halo ka Budi dan ka Siti, selamat datang di live!"*) agar tidak terjadi penumpukan suara.
+      - **Prioritas Chat & Anti-Tumpang-Tindih**: Sapaan hanya dijalankan saat Supri dalam kondisi santai (`IDLE`), tidak memotong obrolan chat, dan tidak menyela saat musik moshing berputar.
+    - **Smart Chat Queue**: Komentar penonton ditampung di antrean dan diproses satu per satu saat Supri dalam kondisi `IDLE` dengan jeda santai 2 detik antar komentar untuk mencegah tumpang-tindih suara.
+    - **Penanganan Hadiah/Gift & Auto Moshing**: Begitu ada penonton yang mengirim gift/saweran apa pun (Mawar, Donat, Paus, dll.), sistem otomatis memutar lagu iPhonekupi dan mengaktifkan mode moshing joget heboh kepala 3D beserta background iklan warna solid bergerak. Supri langsung berseru menyapa nama penyawer (*"Wanjay saweran masuk dari [user]! Kirim [gift]! Gas moshpit lagu iphonekupi bro senggol dong!"*). Audio ducking otomatis mengecilkan volume musik saat Supri berbicara dan kembali kencang saat joget berlanjut.
+    - Interaksi Nama Penonton: Komentar dikirimkan ke LLM dengan format `[nama_penonton]: [komentar]`, di mana Supri secara otomatis menyapa nama penonton dengan gaya Gen Z.
+    - **Minimalist Collapsible Chat Input Dock**:
+      - Form input ketikan komentar disembunyikan secara default (`display: none;`) demi menjaga layar live stream tetap bersih, futuristik, dan fokus ke visual kepala 3D Supri.
+      - Ditampilkan tombol pemicu ringkas bergaya cyberpunk: `[ 💬 KETIK KOMENTAR ]` di dock bawah.
+      - Saat tombol diklik (atau menekan tombol keyboard `C`), kolom input komentar meluncur naik (*slide-up animation*) dan langsung fokus siap ketik.
+      - Dilengkapi tombol tutup `✕`, auto-hide otomatis saat komentar dikirim (`submit`), serta dukungan tombol `Escape` untuk menutup kembali kotak ketikan.
 
 ### D. Fitur Voice Cloning (PRD Bagian 17)
 - **Sampel Suara**:

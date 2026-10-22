@@ -18,7 +18,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark">S.U.P.R.I</span>
-        <span class="brand-sub">PERSONAL AI ASSISTANT</span>
+        <span class="brand-sub">TIKTOK LIVE AI HOST</span>
       </div>
       <div class="state-pill"><span class="dot"></span><span id="stateLabel">IDLE</span></div>
       <div class="meta">
@@ -36,6 +36,10 @@
       <button id="interruptBtn" class="btn btn-danger" disabled>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>
         INTERRUPT
+      </button>
+      <button id="moshBtn" class="btn btn-mosh" title="Putar Lagu Iphonekupi & Joget Mosing">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+        <span id="moshBtnLabel">🎵 IPHONEKUPI MOSH</span>
       </button>
       <label class="toggle">
         <input type="checkbox" id="voiceInterrupt" />
@@ -125,9 +129,30 @@
       <div class="stat"><span>RAM</span><div class="bar"><div id="ramBar"></div></div><span id="ramVal">--%</span></div>
       <div class="stat net"><span>NET</span><span id="netVal" class="muted">↓ -- KB/s · ↑ -- KB/s</span></div>
 
+      <h2>// TIKTOK LIVE STREAM</h2>
+      <div class="tiktok-box">
+        <div class="tiktok-row">
+          <input type="text" id="tiktokUser" placeholder="@username_live" spellcheck="false" autocomplete="off" />
+          <button id="tiktokBtn" class="btn btn-tt" type="button">CONNECT</button>
+        </div>
+        <div class="tiktok-status-row">
+          <span id="tiktokDot" class="tiktok-dot"></span>
+          <span id="tiktokStatusText">OFFLINE</span>
+          <span id="tiktokViewerCount" class="tiktok-viewers muted"></span>
+        </div>
+        <div id="tiktokInfo" class="tiktok-info muted small">Belum terhubung ke room.</div>
+        <label class="tiktok-toggle" title="Supri otomatis menyapa penonton yang baru masuk live">
+          <input type="checkbox" id="tiktokAutoGreet" checked />
+          <span>Sapa penonton baru join</span>
+        </label>
+        <div id="tiktokQueueNotice" class="tiktok-queue-notice" style="display: none;">
+          <span class="dot-queue"></span> Antrean chat: <b id="tiktokQueueCount">0</b>
+        </div>
+      </div>
+
       <h2>// TRANSCRIPT</h2>
       <div class="transcript">
-        <div class="t-label">YOU</div>
+        <div class="t-label">YOU / LIVE CHAT</div>
         <div id="userLine" class="t-user muted">—</div>
         <div class="t-label">SUPRI</div>
         <div id="aiLine" class="t-ai muted">—</div>
@@ -137,10 +162,18 @@
 
     <footer class="dock">
       <canvas id="wave" height="56"></canvas>
-      <form id="cmdForm" class="cmd" autocomplete="off">
+      <!-- Tombol buka ketik komentar (tampil default) -->
+      <div id="chatToggleRow" class="chat-toggle-row">
+        <button id="openChatBtn" class="btn btn-chat-trigger" type="button" title="Buka kotak ketik komentar">
+          <span class="chat-icon">💬</span> KETIK KOMENTAR
+        </button>
+      </div>
+      <!-- Form input komentar (tersembunyi secara default) -->
+      <form id="cmdForm" class="cmd" autocomplete="off" style="display: none;">
         <span class="prompt">&gt;_</span>
-        <input id="cmdInput" placeholder="Ketik perintah lalu Enter…" aria-label="Command input" />
+        <input id="cmdInput" placeholder="Ketik komentar TikTok lalu Enter…" aria-label="Command input" />
         <button type="submit" class="btn btn-send">SEND</button>
+        <button id="closeChatBtn" type="button" class="btn btn-close-chat" title="Tutup ketikan (ESC)">✕</button>
       </form>
       <div id="hint" class="hint muted"></div>
     </footer>

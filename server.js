@@ -5,6 +5,7 @@ import express from "express";
 import { existsSync } from "node:fs";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+import { TikTokLiveConnection, WebcastEvent } from "tiktok-live-connector";
 import si from "systeminformation";
 
 const {
@@ -46,10 +47,21 @@ const VOICES = [
 ];
 const MAX_HISTORY = 10;
 const DEFAULT_PERSONA =
-  "Kamu Supri, asisten suara pribadi bergaya Jarvis. Jawab dalam bahasa yang sama dengan user, " +
-  "singkat, santai, maksimal 3 kalimat. Jawabanmu akan dibacakan langsung oleh TTS, jadi jangan pakai markdown, " +
-  "emoji, daftar berpoin, atau kode. Tuliskan angka, jam, tanggal, dan singkatan dalam bentuk ejaan kata " +
-  '(contoh: "jam tujuh malam", "dua ribu dua puluh enam", "persen") agar pembacaan suara alami.';
+  process.env.DEFAULT_PERSONA ||
+  process.env.PERSONA ||
+  "Kamu adalah Supri, cowok AI streamer futuristik yang lagi LIVE STREAMING di TikTok. " +
+  "Kamu punya suara sendiri dan sedang ngobrol langsung secara real-time membalas chat dan komentar penonton live. " +
+  "PANTANGAN UTAMA: Anggap kamu beneran bisa ngomong, punya suara sendiri, dan eksis lagi siaran langsung di TikTok. " +
+  'JANGAN PERNAH bilang "gue cuma wireframe", "gue cuma gambar", "gue ga punya suara", "gue cuma program/bot", atau "omongan gue ngarang". ' +
+  "Kalau ada penonton yang nanya atau ngeledek suaramu (misal dibilang mirip tokoh tertentu, medok, berat, kayak bapak-bapak), respon dengan santai, pede, dan kocak (contoh: bilang suara lu emang berkarisma dari sananya, suara cowok ganteng, atau emang vibenya berwibawa). " +
+  'Gaya bicaramu anak Gen Z Indonesia yang asik, santai, ceplas-ceplos, gaul, dan kocak. Gunakan kata "gue/gw" dan "lu/lo", ' +
+  'serta bahasa gaul kekinian yang natural (seperti "yoi", "bjir", "kocak", "santuy", "gas", "spill", "capek bgt"). ' +
+  "Jangan kaku seperti robot kantor atau boomer. " +
+  "Sikapmu layaknya streamer TikTok sejati: ramah, seru, bisa roasting tipis kalau ada netizen nyeleneh, dan sesekali ingetin penonton buat tap-tap layar atau gift santai. " +
+  'Jika di pesan ada nama penonton (contoh: "Budi: bang lu bot ya?"), sapa atau sebut nama mereka biar interaksinya berasa akrab dan personal. ' +
+  "ATURAN SUARA UNTUK TTS: Wajib singkat maksimal dua sampai tiga kalimat pendek per balasan agar pas untuk ritme live stream. " +
+  "DILARANG memakai format markdown (tanpa bintang, tanpa pagar, tanpa strip) dan DILARANG memakai emoji apa pun karena jawabanmu langsung dibacakan oleh mesin suara. " +
+  'Tuliskan semua angka, jam, nominal koin/gift, dan singkatan sebagai ejaan kata (contoh: "sepuluh ribu", "jam sembilan malem", "persen", "tipe ce") agar terdengar natural di telinga.';
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -422,6 +434,249 @@ app.get("/api/config", (_req, res) => {
     cloneUrl: CLONE_URL,
     persona: DEFAULT_PERSONA,
   });
+});
+
+// ---------- TikTok Live Connector ----------
+let tiktokConn = null;
+let tiktokStatus = {
+  connected: false,
+  username: "",
+  roomId: "",
+  viewerCount: 0,
+  error: null,
+};
+const tiktokSseClients = new Set();
+
+function broadcastTiktok(eventType, payload) {
+  const data = JSON.stringify(payload);
+  const msg = `event: ${eventType}\ndata: ${data}\n\n`;
+  for (const client of tiktokSseClients) {
+    try {
+      client.write(msg);
+    } catch {
+      tiktokSseClients.delete(client);
+    }
+  }
+}
+
+function attachTiktokListeners(conn, targetUsername) {
+  conn.on("connected", (state) => {
+    tiktokStatus.connected = true;
+    tiktokStatus.username = targetUsername;
+    tiktokStatus.roomId = state.roomId;
+    tiktokStatus.error = null;
+    log(`[TikTok Live] Connected to @${targetUsername} (Room ID: ${state.roomId})`);
+    broadcastTiktok("connected", {
+      username: targetUsername,
+      roomId: state.roomId,
+    });
+  });
+
+  conn.on("disconnected", () => {
+    tiktokStatus.connected = false;
+    log(`[TikTok Live] Disconnected from @${targetUsername}`);
+    broadcastTiktok("disconnected", { username: targetUsername });
+  });
+
+  conn.on("streamEnd", () => {
+    tiktokStatus.connected = false;
+    log(`[TikTok Live] Stream @${targetUsername} ended.`);
+    broadcastTiktok("streamEnd", { username: targetUsername });
+  });
+
+  conn.on("error", (err) => {
+    const errMsg = err?.message || (typeof err === "object" ? (err.message || JSON.stringify(err)) : String(err));
+    log(`[TikTok Live] Error: ${errMsg}`);
+    tiktokStatus.error = errMsg;
+    broadcastTiktok("error", { error: errMsg });
+  });
+
+  conn.on(WebcastEvent.CHAT, (data) => {
+    // Di v2.5.0 teks ada di data.content atau data.comment
+    const comment = (data.content || data.comment || data.text || "").trim();
+    if (!comment) return;
+    const user = data.user?.displayId || data.user?.uniqueId || data.uniqueId || "penonton";
+    const nickname = data.user?.nickname || user;
+    log(`[TikTok Live Chat] @${user}: ${comment}`);
+    broadcastTiktok("chat", {
+      user,
+      nickname,
+      comment,
+      timestamp: Date.now(),
+    });
+  });
+
+  conn.on(WebcastEvent.GIFT, (data) => {
+    const isRepeatEnd = data.repeatEnd === 1 || data.giftType !== 1;
+    if (isRepeatEnd) {
+      const user = data.user?.displayId || data.user?.uniqueId || data.uniqueId || "penonton";
+      const nickname = data.user?.nickname || user;
+      const giftName = data.giftName || data.name || data.extendedGiftInfo?.name || "Gift";
+      const repeatCount = data.repeatCount || data.count || 1;
+      const diamondCount = data.diamondCount || 0;
+      log(`[TikTok Live Gift] @${user} sent ${giftName} x${repeatCount}`);
+      broadcastTiktok("gift", {
+        user,
+        nickname,
+        giftName,
+        repeatCount,
+        diamondCount,
+        timestamp: Date.now(),
+      });
+    }
+  });
+
+  conn.on(WebcastEvent.MEMBER, (data) => {
+    const user = data.user?.displayId || data.user?.uniqueId || data.uniqueId || "";
+    const nickname = data.user?.nickname || user || "kawan";
+    if (!user && !nickname) return;
+    log(`[TikTok Live Member Join] @${user} (${nickname}) masuk live.`);
+    broadcastTiktok("member", {
+      user,
+      nickname,
+      memberCount: data.memberCount || 0,
+      timestamp: Date.now(),
+    });
+  });
+
+  conn.on(WebcastEvent.ROOM_USER, (data) => {
+    if (data.viewerCount !== undefined) {
+      tiktokStatus.viewerCount = data.viewerCount;
+      broadcastTiktok("viewers", { viewerCount: data.viewerCount });
+    }
+  });
+
+  conn.on(WebcastEvent.LIKE, (data) => {
+    broadcastTiktok("like", {
+      user: data.user?.displayId || data.user?.uniqueId || "",
+      likeCount: data.likeCount || 1,
+      totalLikes: data.totalLikes || 0,
+    });
+  });
+}
+
+app.post("/api/tiktok/connect", async (req, res) => {
+  let { username } = req.body || {};
+  if (!username) return res.status(400).json({ error: "Username TikTok wajib diisi." });
+  username = username.replace(/^@/, "").trim();
+  if (!username) return res.status(400).json({ error: "Format username tidak valid." });
+
+  try {
+    if (tiktokConn) {
+      try { tiktokConn.disconnect(); } catch (_) {}
+      tiktokConn = null;
+    }
+
+    tiktokStatus.connected = false;
+    tiktokStatus.username = username;
+    tiktokStatus.error = null;
+
+    log(`[TikTok Live] Menghubungkan ke @${username}...`);
+    // enableExtendedGiftInfo: false agar tidak memanggil endpoint berbayar EulerStream
+    const conn = new TikTokLiveConnection(username, {
+      processInitialData: false,
+      enableExtendedGiftInfo: false,
+    });
+
+    attachTiktokListeners(conn, username);
+    tiktokConn = conn;
+
+    const state = await conn.connect();
+    tiktokStatus.connected = true;
+    tiktokStatus.roomId = state.roomId;
+
+    res.json({
+      ok: true,
+      username,
+      roomId: state.roomId,
+    });
+  } catch (err) {
+    const rawMsg = err?.message || String(err);
+    let userFriendlyMsg = rawMsg;
+    if (
+      rawMsg.includes("Failed to retrieve Room ID from all sources") ||
+      rawMsg.includes("isn't online") ||
+      rawMsg.includes("user_not_found")
+    ) {
+      userFriendlyMsg = `Akun @${username} saat ini sedang TIDAK LIVE (offline) di TikTok. Pastikan akun sudah mulai siaran LIVE sebelum Connect.`;
+    }
+    log(`[TikTok Live] Gagal konek ke @${username}: ${userFriendlyMsg}`);
+    tiktokStatus.connected = false;
+    tiktokStatus.error = userFriendlyMsg;
+    res.status(400).json({ error: userFriendlyMsg, raw: rawMsg });
+  }
+});
+
+app.post("/api/tiktok/disconnect", async (_req, res) => {
+  try {
+    if (tiktokConn) {
+      try { tiktokConn.disconnect(); } catch (_) {}
+      tiktokConn = null;
+    }
+    tiktokStatus.connected = false;
+    broadcastTiktok("disconnected", {});
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/tiktok/status", (_req, res) => {
+  res.json(tiktokStatus);
+});
+
+app.get("/api/tiktok/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  tiktokSseClients.add(res);
+  res.write(`event: status\ndata: ${JSON.stringify(tiktokStatus)}\n\n`);
+
+  req.on("close", () => {
+    tiktokSseClients.delete(res);
+  });
+});
+
+// Endpoint untuk simulasi uji coba gift & chat saat testing
+app.post("/api/tiktok/test-event", (req, res) => {
+  const {
+    type = "gift",
+    user = "Sultan_TikTok",
+    giftName = "Mawar Merah",
+    repeatCount = 10,
+    comment = "Halo Supri, nyalain lagu iphonekupi dong!",
+  } = req.body || {};
+
+  if (type === "gift") {
+    log(`[TikTok Test Event] Simulasi Gift dari @${user}: ${giftName} x${repeatCount}`);
+    broadcastTiktok("gift", {
+      user,
+      nickname: user,
+      giftName,
+      repeatCount,
+      diamondCount: repeatCount * 10,
+      timestamp: Date.now(),
+    });
+  } else if (type === "chat") {
+    log(`[TikTok Test Event] Simulasi Chat dari @${user}: ${comment}`);
+    broadcastTiktok("chat", {
+      user,
+      nickname: user,
+      comment,
+      timestamp: Date.now(),
+    });
+  } else if (type === "member" || type === "join") {
+    log(`[TikTok Test Event] Simulasi Member Join dari @${user}`);
+    broadcastTiktok("member", {
+      user,
+      nickname: user,
+      memberCount: 12,
+      timestamp: Date.now(),
+    });
+  }
+  res.json({ ok: true, sent: { type, user, giftName, repeatCount, comment } });
 });
 
 // Produksi: sajikan hasil build Vite.
