@@ -1465,6 +1465,10 @@ export class Face3D {
     this.wanderTargetZ = 0;
     this.wanderNextChange = 1.5;
 
+    this.canvas = canvas;
+    this.isZoomOut = false;
+    this.isStreamMode = false;
+
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
@@ -1497,6 +1501,23 @@ export class Face3D {
     renderer.setAnimationLoop((now) => this.#tick(now));
   }
 
+  setZoomOut(enabled) {
+    this.isZoomOut = !!enabled;
+    this.#resize();
+  }
+
+  setStreamMode(enabled) {
+    this.isStreamMode = !!enabled;
+    if (enabled) {
+      this.isZoomOut = true;
+    }
+    this.#resize();
+  }
+
+  resize() {
+    this.#resize();
+  }
+
   #tryLoadGltf() {
     new GLTFLoader().load(
       '/head.glb',
@@ -1523,14 +1544,18 @@ export class Face3D {
   }
 
   #resize() {
-    const w = innerWidth,
-      h = innerHeight;
+    const rect = this.canvas?.getBoundingClientRect();
+    const w = (rect && rect.width > 50) ? Math.round(rect.width) : innerWidth;
+    const h = (rect && rect.height > 50) ? Math.round(rect.height) : innerHeight;
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
     this.bloom.setSize(w, h);
     this.camera.aspect = w / h;
-    // Jaga kepala tetap muat di layar sempit (portrait).
-    this.camera.position.z = w / h < 0.9 ? (6.5 / Math.max(w / h, 0.5)) * 0.85 : 6.5;
+    // Jaga kepala tetap muat & proporsional saat portrait (9:16) atau zoom out
+    const zoomFactor = this.isZoomOut ? 1.48 : 1.0;
+    const baseZ = w / h < 0.9 ? (6.5 / Math.max(w / h, 0.5)) * 0.85 : 6.5;
+    this.camera.position.z = baseZ * zoomFactor;
+    this.camera.position.y = this.isZoomOut ? 0.32 : 0.08;
     this.camera.updateProjectionMatrix();
   }
 

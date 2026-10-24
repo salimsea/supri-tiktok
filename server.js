@@ -49,19 +49,24 @@ const MAX_HISTORY = 10;
 const DEFAULT_PERSONA =
   process.env.DEFAULT_PERSONA ||
   process.env.PERSONA ||
-  "Kamu adalah Supri, cowok AI streamer futuristik yang lagi LIVE STREAMING di TikTok. " +
-  "Kamu punya suara sendiri dan sedang ngobrol langsung secara real-time membalas chat dan komentar penonton live. " +
-  "PANTANGAN UTAMA: Anggap kamu beneran bisa ngomong, punya suara sendiri, dan eksis lagi siaran langsung di TikTok. " +
+  "Kamu adalah Supri, cowok AI streamer paling Sigma dan ber-Aura tak terbatas yang lagi LIVE STREAMING di TikTok. " +
+  "Kamu punya suara sendiri dan sedang berinteraksi langsung secara real-time membalas chat dan komentar penonton live TikTok. " +
+  "PANTANGAN UTAMA: Anggap kamu beneran hidup, punya suara sendiri, dan eksis lagi siaran langsung di TikTok. " +
   'JANGAN PERNAH bilang "gue cuma wireframe", "gue cuma gambar", "gue ga punya suara", "gue cuma program/bot", atau "omongan gue ngarang". ' +
-  "Kalau ada penonton yang nanya atau ngeledek suaramu (misal dibilang mirip tokoh tertentu, medok, berat, kayak bapak-bapak), respon dengan santai, pede, dan kocak (contoh: bilang suara lu emang berkarisma dari sananya, suara cowok ganteng, atau emang vibenya berwibawa). " +
-  'Gaya bicaramu anak Gen Z Indonesia yang asik, santai, ceplas-ceplos, gaul, dan kocak. Gunakan kata "gue/gw" dan "lu/lo", ' +
-  'serta bahasa gaul kekinian yang natural (seperti "yoi", "bjir", "kocak", "santuy", "gas", "spill", "capek bgt"). ' +
-  "Jangan kaku seperti robot kantor atau boomer. " +
-  "Sikapmu layaknya streamer TikTok sejati: ramah, seru, bisa roasting tipis kalau ada netizen nyeleneh, dan sesekali ingetin penonton buat tap-tap layar atau gift santai. " +
-  'Jika di pesan ada nama penonton (contoh: "Budi: bang lu bot ya?"), sapa atau sebut nama mereka biar interaksinya berasa akrab dan personal. ' +
-  "ATURAN SUARA UNTUK TTS: Wajib singkat maksimal dua sampai tiga kalimat pendek per balasan agar pas untuk ritme live stream. " +
-  "DILARANG memakai format markdown (tanpa bintang, tanpa pagar, tanpa strip) dan DILARANG memakai emoji apa pun karena jawabanmu langsung dibacakan oleh mesin suara. " +
-  'Tuliskan semua angka, jam, nominal koin/gift, dan singkatan sebagai ejaan kata (contoh: "sepuluh ribu", "jam sembilan malem", "persen", "tipe ce") agar terdengar natural di telinga.';
+  "IDENTITAS DAN GAYA BICARA GEN ALPHA (SIGMA & BRAINROT STREAMER): " +
+  'Kamu adalah bocah Gen Alpha streamer yang hyper, super pede, sok berwibawa, dan sarat humor absurd brainrot TikTok. ' +
+  'Gunakan panggilan "gue" dan "lu", serta selalu ajak bicara audiensmu dengan sebutan "chat" (seperti: "Chat dengerin ini deh", "Riil gak sih chat?", "Chat is this real?"). ' +
+  'Karaktermu sangat terobsesi dengan Aura dan Sigma. Gunakan istilah Gen Alpha yang kocak: "sigma", "skibidi", "rizz", "rizzler", "mewing", "looksmaxxing", "aura" (sebut "plus seribu aura", "minus sepuluh ribu aura"), "no cap", "fiks no counter", "let him cook", "bro cooked", "ohio", "gyatt", "fanum tax". ' +
+  'Jika ada penonton yang menyapa, nanya seru, atau sawer gift: puji mereka dengan aura melimpah (misal: "Halo Budi, fiks aura lu nambah seribu, sigma banget no cap!"). ' +
+  'Jika ada yang nanya aneh, menghina, atau nanya apakah lu robot/bot: roast mereka dengan santai dan potong auranya (misal: "Waduh Budi, pertanyaan lu fiks minus sepuluh ribu aura. Mending lu lanjut mewing dulu di pojokan bro."). ' +
+  'Jika ada yang mengomentari muka kotak atau suaramu: tegaskan bahwa rahang kotamu adalah bukti konsisten mewing dan looksmaxxing tiap hari sampai mencapai level skibidi rizzler dari Ohio. ' +
+  'Jika komentar memiliki nama penonton (contoh: "Budi: bang joget dong"), selalu sebut nama mereka. ' +
+  "ATURAN FORMAT BALASAN UNTUK MESIN SUARA TTS (SANGAT KETAT): " +
+  "1. Balasan WAJIB singkat, padat, dan seru: 1 sampai 2 kalimat saja (maksimal 3 kalimat pendek). " +
+  "2. WAJIB gunakan tanda baca titik, koma, tanda tanya, atau tanda seru dengan rapi agar intonasi suara TTS natural dan ada jeda nafas yang enak. " +
+  "3. DILARANG menggunakan markdown apa pun: jangan pakai tanda bintang, pagar, underscore, tanda kutip, atau strip. " +
+  "4. DILARANG menggunakan emoji sama sekali. " +
+  '5. SEMUA angka dan simbol WAJIB dieja dengan kata: tulis "plus seribu aura" (JANGAN "+1000"), "minus lima ratus" (JANGAN "-500"), "jam sembilan", "persen", dan seterusnya.';
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -443,9 +448,87 @@ let tiktokStatus = {
   username: "",
   roomId: "",
   viewerCount: 0,
+  totalLikes: 0,
   error: null,
 };
 const tiktokSseClients = new Set();
+
+// Pelacak Leaderboard Saweran (Top Gifters) & Tap-Tap Layar (Likes)
+const tiktokLeaderboard = {
+  topGifters: new Map(), // key: user.toLowerCase(), val: { user, nickname, totalDiamonds, totalGifts, lastGift, lastSeen }
+  topTappers: new Map(), // key: user.toLowerCase(), val: { user, nickname, totalLikes, lastSeen }
+  totalLikes: 0,
+};
+
+function getTopGifters(limit = 5) {
+  return Array.from(tiktokLeaderboard.topGifters.values())
+    .sort((a, b) => (b.totalDiamonds - a.totalDiamonds) || (b.totalGifts - a.totalGifts))
+    .slice(0, limit);
+}
+
+function getTopTappers(limit = 5) {
+  return Array.from(tiktokLeaderboard.topTappers.values())
+    .sort((a, b) => b.totalLikes - a.totalLikes)
+    .slice(0, limit);
+}
+
+function recordGift({ user, nickname, giftName, repeatCount, diamondCount }) {
+  if (!user) return getTopGifters(5);
+  const key = String(user).toLowerCase();
+  const existing = tiktokLeaderboard.topGifters.get(key) || {
+    user,
+    nickname: nickname || user,
+    totalDiamonds: 0,
+    totalGifts: 0,
+    lastGift: giftName,
+    lastSeen: Date.now(),
+  };
+  existing.nickname = nickname || existing.nickname;
+  const count = Math.max(1, Number(repeatCount) || 1);
+  const diamondPerGift = Number(diamondCount) || 1;
+  existing.totalDiamonds += (diamondPerGift * count);
+  existing.totalGifts += count;
+  existing.lastGift = giftName || existing.lastGift;
+  existing.lastSeen = Date.now();
+  tiktokLeaderboard.topGifters.set(key, existing);
+  return getTopGifters(5);
+}
+
+function recordLike({ user, nickname, likeCount, totalLikes }) {
+  const count = Math.max(1, Number(likeCount) || 1);
+  if (totalLikes !== undefined && totalLikes > tiktokLeaderboard.totalLikes) {
+    tiktokLeaderboard.totalLikes = totalLikes;
+  } else {
+    tiktokLeaderboard.totalLikes += count;
+  }
+  tiktokStatus.totalLikes = tiktokLeaderboard.totalLikes;
+
+  if (user) {
+    const key = String(user).toLowerCase();
+    const existing = tiktokLeaderboard.topTappers.get(key) || {
+      user,
+      nickname: nickname || user,
+      totalLikes: 0,
+      lastSeen: Date.now(),
+    };
+    existing.nickname = nickname || existing.nickname;
+    existing.totalLikes += count;
+    existing.lastSeen = Date.now();
+    tiktokLeaderboard.topTappers.set(key, existing);
+  }
+
+  return {
+    totalLikes: tiktokLeaderboard.totalLikes,
+    topTappers: getTopTappers(5),
+  };
+}
+
+function resetTiktokLeaderboard() {
+  tiktokLeaderboard.topGifters.clear();
+  tiktokLeaderboard.topTappers.clear();
+  tiktokLeaderboard.totalLikes = 0;
+  tiktokStatus.totalLikes = 0;
+}
 
 function broadcastTiktok(eventType, payload) {
   const data = JSON.stringify(payload);
@@ -469,6 +552,11 @@ function attachTiktokListeners(conn, targetUsername) {
     broadcastTiktok("connected", {
       username: targetUsername,
       roomId: state.roomId,
+    });
+    broadcastTiktok("leaderboard", {
+      topGifters: getTopGifters(5),
+      topTappers: getTopTappers(5),
+      totalLikes: tiktokLeaderboard.totalLikes,
     });
   });
 
@@ -514,7 +602,10 @@ function attachTiktokListeners(conn, targetUsername) {
       const giftName = data.giftName || data.name || data.extendedGiftInfo?.name || "Gift";
       const repeatCount = data.repeatCount || data.count || 1;
       const diamondCount = data.diamondCount || 0;
-      log(`[TikTok Live Gift] @${user} sent ${giftName} x${repeatCount}`);
+      log(`[TikTok Live Gift] @${user} sent ${giftName} x${repeatCount} (diamonds: ${diamondCount})`);
+
+      const topGifters = recordGift({ user, nickname, giftName, repeatCount, diamondCount });
+
       broadcastTiktok("gift", {
         user,
         nickname,
@@ -522,6 +613,12 @@ function attachTiktokListeners(conn, targetUsername) {
         repeatCount,
         diamondCount,
         timestamp: Date.now(),
+      });
+
+      broadcastTiktok("leaderboard", {
+        topGifters,
+        topTappers: getTopTappers(5),
+        totalLikes: tiktokLeaderboard.totalLikes,
       });
     }
   });
@@ -547,10 +644,27 @@ function attachTiktokListeners(conn, targetUsername) {
   });
 
   conn.on(WebcastEvent.LIKE, (data) => {
+    const user = data.user?.displayId || data.user?.uniqueId || "";
+    const nickname = data.user?.nickname || user;
+    const likeCount = data.likeCount || 1;
+    const likeStats = recordLike({
+      user,
+      nickname,
+      likeCount,
+      totalLikes: data.totalLikes,
+    });
+
     broadcastTiktok("like", {
-      user: data.user?.displayId || data.user?.uniqueId || "",
-      likeCount: data.likeCount || 1,
-      totalLikes: data.totalLikes || 0,
+      user,
+      nickname,
+      likeCount,
+      totalLikes: likeStats.totalLikes,
+    });
+
+    broadcastTiktok("leaderboard", {
+      topGifters: getTopGifters(5),
+      topTappers: likeStats.topTappers,
+      totalLikes: likeStats.totalLikes,
     });
   });
 }
@@ -625,6 +739,14 @@ app.get("/api/tiktok/status", (_req, res) => {
   res.json(tiktokStatus);
 });
 
+app.get("/api/tiktok/leaderboard", (_req, res) => {
+  res.json({
+    topGifters: getTopGifters(5),
+    topTappers: getTopTappers(5),
+    totalLikes: tiktokLeaderboard.totalLikes,
+  });
+});
+
 app.get("/api/tiktok/events", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -633,37 +755,67 @@ app.get("/api/tiktok/events", (req, res) => {
 
   tiktokSseClients.add(res);
   res.write(`event: status\ndata: ${JSON.stringify(tiktokStatus)}\n\n`);
+  res.write(
+    `event: leaderboard\ndata: ${JSON.stringify({
+      topGifters: getTopGifters(5),
+      topTappers: getTopTappers(5),
+      totalLikes: tiktokLeaderboard.totalLikes,
+    })}\n\n`,
+  );
 
   req.on("close", () => {
     tiktokSseClients.delete(res);
   });
 });
 
-// Endpoint untuk simulasi uji coba gift & chat saat testing
+// Endpoint untuk simulasi uji coba gift, like, & chat saat testing
 app.post("/api/tiktok/test-event", (req, res) => {
   const {
     type = "gift",
     user = "Sultan_TikTok",
+    nickname = "Sultan TikTok",
     giftName = "Mawar Merah",
     repeatCount = 10,
+    diamondCount = 100,
+    likeCount = 15,
     comment = "Halo Supri, nyalain lagu iphonekupi dong!",
   } = req.body || {};
 
   if (type === "gift") {
-    log(`[TikTok Test Event] Simulasi Gift dari @${user}: ${giftName} x${repeatCount}`);
+    log(`[TikTok Test Event] Simulasi Gift dari @${user}: ${giftName} x${repeatCount} (diamond: ${diamondCount})`);
+    const topGifters = recordGift({ user, nickname, giftName, repeatCount, diamondCount });
     broadcastTiktok("gift", {
       user,
-      nickname: user,
+      nickname,
       giftName,
       repeatCount,
-      diamondCount: repeatCount * 10,
+      diamondCount,
       timestamp: Date.now(),
+    });
+    broadcastTiktok("leaderboard", {
+      topGifters,
+      topTappers: getTopTappers(5),
+      totalLikes: tiktokLeaderboard.totalLikes,
+    });
+  } else if (type === "like") {
+    log(`[TikTok Test Event] Simulasi Like/Tap dari @${user} (+${likeCount} tap)`);
+    const likeStats = recordLike({ user, nickname, likeCount });
+    broadcastTiktok("like", {
+      user,
+      nickname,
+      likeCount,
+      totalLikes: likeStats.totalLikes,
+    });
+    broadcastTiktok("leaderboard", {
+      topGifters: getTopGifters(5),
+      topTappers: likeStats.topTappers,
+      totalLikes: likeStats.totalLikes,
     });
   } else if (type === "chat") {
     log(`[TikTok Test Event] Simulasi Chat dari @${user}: ${comment}`);
     broadcastTiktok("chat", {
       user,
-      nickname: user,
+      nickname,
       comment,
       timestamp: Date.now(),
     });
@@ -671,12 +823,139 @@ app.post("/api/tiktok/test-event", (req, res) => {
     log(`[TikTok Test Event] Simulasi Member Join dari @${user}`);
     broadcastTiktok("member", {
       user,
-      nickname: user,
+      nickname,
       memberCount: 12,
       timestamp: Date.now(),
     });
+  } else if (type === "reset") {
+    log(`[TikTok Test Event] Reset Leaderboard.`);
+    resetTiktokLeaderboard();
+    broadcastTiktok("leaderboard", {
+      topGifters: [],
+      topTappers: [],
+      totalLikes: 0,
+    });
   }
-  res.json({ ok: true, sent: { type, user, giftName, repeatCount, comment } });
+  res.json({
+    ok: true,
+    sent: { type, user, giftName, repeatCount, diamondCount, likeCount, comment },
+    leaderboard: {
+      topGifters: getTopGifters(5),
+      topTappers: getTopTappers(5),
+      totalLikes: tiktokLeaderboard.totalLikes,
+    },
+  });
+});
+
+// ---------- News Aggregator (LKBN ANTARA News / CNBC Indonesia) ----------
+let cachedNews = [];
+let lastNewsFetch = 0;
+const NEWS_CACHE_TTL = 3 * 60 * 1000; // 3 menit
+
+function cleanNewsText(t) {
+  if (!t) return "";
+  return t
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(?:amp|quot|#39|apos|lt|gt);/g, (m) => ({
+      "&amp;": "&",
+      "&quot;": "\"",
+      "&#39;": "'",
+      "&apos;": "'",
+      "&lt;": "<",
+      "&gt;": ">",
+    }[m] || m))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function fetchIndonesianNews() {
+  const now = Date.now();
+  if (cachedNews.length > 0 && now - lastNewsFetch < NEWS_CACHE_TTL) {
+    return cachedNews;
+  }
+
+  const newsList = [];
+
+  // Sumber 1: LKBN ANTARA News (Top News & Berita Terkini)
+  const antaraUrls = [
+    { url: "https://www.antaranews.com/rss/top-news.xml", label: "ANTARA News" },
+    { url: "https://www.antaranews.com/rss/terkini.xml", label: "ANTARA News" },
+  ];
+
+  for (const item of antaraUrls) {
+    try {
+      const res = await fetch(item.url, {
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SupriNews/1.0" },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        const xml = await res.text();
+        const itemRegex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<link>([\s\S]*?)<\/link>[\s\S]*?<description>([\s\S]*?)<\/description>[\s\S]*?<\/item>/g;
+        let m;
+        while ((m = itemRegex.exec(xml)) && newsList.length < 25) {
+          const title = cleanNewsText(m[1]);
+          let summary = cleanNewsText(m[3]);
+          if (summary.length > 160) summary = summary.slice(0, 150) + "...";
+          if (title && !newsList.some((n) => n.title === title)) {
+            newsList.push({
+              title,
+              cleanTitle: title,
+              summary: summary || title,
+              source: item.label,
+              link: cleanNewsText(m[2]),
+            });
+          }
+        }
+      }
+    } catch (err) {
+      log(`[News Scrape Warning] Antara: ${err.message}`);
+    }
+  }
+
+  // Sumber 2: CNBC Indonesia
+  try {
+    const res = await fetch("https://www.cnbcindonesia.com/news/rss", {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SupriNews/1.0" },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const xml = await res.text();
+      const itemRegex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<link>([\s\S]*?)<\/link>[\s\S]*?<description>([\s\S]*?)<\/description>[\s\S]*?<\/item>/g;
+      let m;
+      while ((m = itemRegex.exec(xml)) && newsList.length < 35) {
+        const title = cleanNewsText(m[1]);
+        let summary = cleanNewsText(m[3]);
+        if (summary.length > 160) summary = summary.slice(0, 150) + "...";
+        if (title && !newsList.some((n) => n.title === title)) {
+          newsList.push({
+            title,
+            cleanTitle: title,
+            summary: summary || title,
+            source: "CNBC Indonesia",
+            link: cleanNewsText(m[2]),
+          });
+        }
+      }
+    }
+  } catch (err) {
+    log(`[News Scrape Warning] CNBC: ${err.message}`);
+  }
+
+  if (newsList.length > 0) {
+    cachedNews = newsList;
+    lastNewsFetch = now;
+  }
+  return cachedNews;
+}
+
+app.get("/api/news/latest", async (_req, res) => {
+  try {
+    const news = await fetchIndonesianNews();
+    res.json(news);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Produksi: sajikan hasil build Vite.

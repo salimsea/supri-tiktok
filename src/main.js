@@ -21,6 +21,15 @@ const el = {
   tiktokAutoGreet: $('tiktokAutoGreet'),
   chatToggleRow: $('chatToggleRow'), openChatBtn: $('openChatBtn'), closeChatBtn: $('closeChatBtn'),
   wave: $('wave'), cmdForm: $('cmdForm'), cmdInput: $('cmdInput'), hint: $('hint'),
+  liveModeBtn: $('liveModeBtn'), liveModeLabel: $('liveModeLabel'),
+  zoomBtn: $('zoomBtn'), zoomLabel: $('zoomLabel'), obsCleanBtn: $('obsCleanBtn'),
+  stageRoomInfo: $('stageRoomInfo'), stageViewerInfo: $('stageViewerInfo'),
+  sultanList: $('sultanList'), streamLikeCount: $('streamLikeCount'), likeHeartIcon: $('likeHeartIcon'),
+  recentTapFlash: $('recentTapFlash'), recentTapText: $('recentTapText'),
+  tappersList: $('tappersList'), floatingHearts: $('floatingHearts'),
+  streamCaptionText: $('streamCaptionText'),
+  autoNewsToggle: $('autoNewsToggle'), autoNewsLabel: $('autoNewsLabel'),
+  testGiftBtn: $('testGiftBtn'), testLikeBtn: $('testLikeBtn'), testNewsBtn: $('testNewsBtn'), resetStatsBtn: $('resetStatsBtn'),
 };
 
 const MAX_HISTORY = 10;
@@ -103,10 +112,17 @@ function setState(s) {
   el.interruptBtn.disabled = !(s === 'THINKING' || s === 'SPEAKING' || s === 'MOSHING');
 }
 
+let lastChatActivityTime = Date.now();
+let isSpeakingNews = false;
+function recordChatActivity() {
+  lastChatActivityTime = Date.now();
+}
+
 const restState = () => (isMusicPlaying ? 'MOSHING' : micOn ? 'LISTENING' : 'IDLE');
 
 function goRest() {
   setState(restState());
+  recordChatActivity();
   if (micOn) stt.start();
   // Periksa apakah ada antrean komentar atau sapaan penonton yang menunggu
   setTimeout(() => {
@@ -163,7 +179,7 @@ function startIphonekupiMosh({
   setLine(el.userLine, userLabel);
   setLine(el.aiLine, aiLabel);
 
-  const introText = customIntro || 'Anjay lagu iphonekupi! Gas moshpit bro senggol dong! Tap-tap layar sambil joget!';
+  const introText = customIntro || 'Anjay lagu iphonekupi! Gas moshpit level sigma chat no cap! Tap-tap layar sambil joget!';
   addLog('assistant', introText);
   if (intro || customIntro) {
     tts.enqueue(introText);
@@ -194,22 +210,40 @@ async function handleUserText(raw) {
   const text = raw.trim();
   if (!text) return;
 
-  // Deteksi perintah lagu iphonekupi
+  // Deteksi perintah joget atau lagu iphonekupi
+  const isJoget = /\bjoget\b|\bmosh\b|\bmoshpit\b|\bgoyang\b|\bdance\b/i.test(text);
   const isIphonekupi = /stel.*iphonekupi|setel.*iphonekupi|putar.*iphonekupi|mainkan.*iphonekupi|nyalain.*iphonekupi|play.*iphonekupi|\biphonekupi\b/i.test(text);
   const isStopMusic = isMusicPlaying && /stop|berhenti|pause|matiin|cukup/i.test(text);
 
   if (isStopMusic) {
     stopIphonekupiMosh();
     setLine(el.userLine, text);
+    recordChatActivity();
     return;
   }
 
-  if (isIphonekupi) {
+  if (isJoget || isIphonekupi) {
     setLine(el.userLine, text);
     addLog('user', text);
-    startIphonekupiMosh({ intro: true });
+    if (isMusicPlaying) {
+      const shoutText = 'Asoy! Ini udah moshpit lagu iphonekupi level sigma chat! Gas terus no cap!';
+      setLine(el.aiLine, `🎵 ${shoutText}`);
+      addLog('assistant', shoutText);
+      tts.unlock();
+      face.triggerLaugh(2.0);
+      tts.enqueue(shoutText);
+      recordChatActivity();
+      return;
+    }
+    const customIntro = isJoget
+      ? 'Wanjay riil! Ada yang minta joget nih chat! Lagu iphonekupi langsung kita gas moshpit level sigma fiks no counter!'
+      : undefined;
+    startIphonekupiMosh({ intro: true, customIntro });
+    recordChatActivity();
     return;
   }
+
+  recordChatActivity();
 
   // Jika teks user ada tawa, aktifkan ekspresi nyengir & sipit
   if (LAUGH_REGEX.test(text)) {
@@ -284,8 +318,8 @@ function finishTurn() {
   goRest();
 }
 
-function interrupt({ silent = false } = {}) {
-  if (isMusicPlaying) stopIphonekupiMosh();
+function interrupt({ silent = false, stopMusic = false } = {}) {
+  if (stopMusic && isMusicPlaying) stopIphonekupiMosh();
   const t = turn;
   tts.stop();
   if (!t || t.finished) return;
@@ -339,6 +373,9 @@ function setLine(node, text, muted = false) {
   node.textContent = text;
   node.classList.toggle('muted', muted);
   node.parentElement.scrollTop = node.parentElement.scrollHeight;
+  if (node === el.aiLine && el.streamCaptionText) {
+    el.streamCaptionText.textContent = text && text !== '…' && text !== '—' ? text : 'Siap menemani live streaming TikTok!';
+  }
 }
 
 let hintTimer;
@@ -446,7 +483,7 @@ function frame(now) {
 
   if (isMusicPlaying) {
     // Audio ducking: saat Supri ngomong, kecilkan volume lagu agar suara AI jelas
-    musicAudio.volume = state === 'SPEAKING' ? 0.25 : 1.0;
+    musicAudio.volume = (state === 'SPEAKING' || tts.busy) ? 0.25 : 1.0;
 
     let musicLvl = 0;
     if (musicAnalyser) {
@@ -478,6 +515,134 @@ let tiktokEventSource = null;
 const tiktokChatQueue = [];
 let isProcessingTiktokChat = false;
 
+// ---------- 9:16 Live Stream Mode & Zoom Controller ----------
+let isLiveMode916 = prefs.get('supri-live-916', 'true') === 'true';
+let isZoomOut = prefs.get('supri-zoom-out', 'true') === 'true';
+let isObsClean = new URLSearchParams(location.search).get('stream') === '1' || new URLSearchParams(location.search).get('clean') === '1';
+
+function setLiveMode916(active) {
+  isLiveMode916 = !!active;
+  prefs.set('supri-live-916', isLiveMode916 ? 'true' : 'false');
+  document.body.classList.toggle('live-9-16-active', isLiveMode916);
+  if (el.liveModeBtn) {
+    el.liveModeBtn.classList.toggle('active', isLiveMode916);
+    if (el.liveModeLabel) el.liveModeLabel.textContent = isLiveMode916 ? 'FRAME 9:16' : 'FULL SCREEN';
+  }
+  face.setStreamMode(isLiveMode916);
+  face.setZoomOut(isZoomOut);
+  setTimeout(() => face.resize(), 60);
+}
+
+function setZoomOut(active) {
+  isZoomOut = !!active;
+  prefs.set('supri-zoom-out', isZoomOut ? 'true' : 'false');
+  if (el.zoomBtn) {
+    el.zoomBtn.classList.toggle('active', isZoomOut);
+    if (el.zoomLabel) el.zoomLabel.textContent = isZoomOut ? '🔍 ZOOM OUT' : '🔍 ZOOM CLOSE';
+  }
+  face.setZoomOut(isZoomOut);
+}
+
+function setObsClean(active) {
+  isObsClean = !!active;
+  document.body.classList.toggle('obs-clean-mode', isObsClean);
+  if (el.obsCleanBtn) {
+    el.obsCleanBtn.classList.toggle('active', isObsClean);
+  }
+  setTimeout(() => face.resize(), 60);
+}
+
+function formatCount(num) {
+  const n = Number(num) || 0;
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return n.toLocaleString('id-ID');
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderSultanList(topGifters) {
+  if (!el.sultanList) return;
+  if (!topGifters || topGifters.length === 0) {
+    el.sultanList.innerHTML = '<div class="sultan-empty">Menunggu Sultan... 💎</div>';
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉', '4.', '5.'];
+  const html = topGifters.map((g, idx) => {
+    const rank = idx + 1;
+    const rankClass = `rank-${rank}`;
+    const medal = medals[idx] || `${rank}.`;
+    const name = g.nickname || g.user || 'Sultan';
+    const diamonds = formatCount(g.totalDiamonds || g.totalGifts || 0);
+    const giftDesc = g.lastGift ? `${g.lastGift} x${g.totalGifts || 1}` : 'Saweran';
+
+    return `
+      <div class="sultan-item ${rankClass}">
+        <div class="sultan-rank-badge">${medal}</div>
+        <div class="sultan-user-col">
+          <div class="sultan-name" title="@${escapeHtml(g.user)}">${escapeHtml(name)}</div>
+          <div class="sultan-gift-desc">${escapeHtml(giftDesc)}</div>
+        </div>
+        <div class="sultan-diamonds">💎 ${diamonds}</div>
+      </div>
+    `;
+  }).join('');
+
+  el.sultanList.innerHTML = html;
+}
+
+function renderTappersList(topTappers) {
+  if (!el.tappersList) return;
+  if (!topTappers || topTappers.length === 0) {
+    el.tappersList.innerHTML = '<div class="tapper-empty">Yuk bantu tap-tap layar! ✨</div>';
+    return;
+  }
+
+  const html = topTappers.slice(0, 3).map((t, idx) => {
+    const rank = idx + 1;
+    const name = t.nickname || t.user || 'Kawan';
+    const count = formatCount(t.totalLikes || 0);
+    return `
+      <div class="tapper-item">
+        <span class="tapper-name" title="@${escapeHtml(t.user)}">#${rank} ${escapeHtml(name)}</span>
+        <span class="tapper-count">❤️ ${count}</span>
+      </div>
+    `;
+  }).join('');
+
+  el.tappersList.innerHTML = html;
+}
+
+function updateLikesUI(totalLikes) {
+  if (el.streamLikeCount) {
+    el.streamLikeCount.textContent = formatCount(totalLikes);
+  }
+}
+
+function spawnFloatingHearts(count = 2) {
+  if (!el.floatingHearts) return;
+  const hearts = ['❤️', '💖', '💘', '✨', '🔥'];
+  const num = Math.min(Math.max(1, count), 4);
+  for (let i = 0; i < num; i++) {
+    const span = document.createElement('span');
+    span.className = 'floating-heart';
+    span.textContent = hearts[Math.floor(Math.random() * hearts.length)];
+    const leftPercent = 68 + Math.random() * 26;
+    span.style.left = `${leftPercent}%`;
+    span.style.fontSize = `${14 + Math.random() * 12}px`;
+    span.style.animationDuration = `${1.4 + Math.random() * 0.7}s`;
+    el.floatingHearts.appendChild(span);
+    setTimeout(() => span.remove(), 2100);
+  }
+}
+
 function updateTiktokQueueUI() {
   if (!el.tiktokQueueNotice) return;
   const count = tiktokChatQueue.length;
@@ -506,7 +671,10 @@ function updateTiktokStatusUI(status) {
       el.tiktokInfo.textContent = `Room ID: ${status.roomId || '—'} · @${status.username}`;
     }
     if (el.tiktokViewerCount) {
-      el.tiktokViewerCount.textContent = status.viewerCount ? `👁 ${status.viewerCount}` : '';
+      el.tiktokViewerCount.textContent = status.viewerCount ? `👁 ${formatCount(status.viewerCount)}` : '';
+    }
+    if (el.stageRoomInfo) {
+      el.stageRoomInfo.textContent = `@${status.username}`;
     }
   } else {
     el.tiktokStatusText.textContent = status.error ? 'ERROR' : 'OFFLINE';
@@ -525,6 +693,9 @@ function updateTiktokStatusUI(status) {
     if (el.tiktokViewerCount) {
       el.tiktokViewerCount.textContent = '';
     }
+    if (el.stageRoomInfo) {
+      el.stageRoomInfo.textContent = status.error ? 'ERROR' : 'OFFLINE';
+    }
   }
 }
 
@@ -539,6 +710,15 @@ function initTiktokSSE() {
     try {
       const data = JSON.parse(e.data);
       updateTiktokStatusUI(data);
+    } catch (_) {}
+  });
+
+  tiktokEventSource.addEventListener('leaderboard', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.topGifters) renderSultanList(data.topGifters);
+      if (data.topTappers) renderTappersList(data.topTappers);
+      if (data.totalLikes !== undefined) updateLikesUI(data.totalLikes);
     } catch (_) {}
   });
 
@@ -572,7 +752,10 @@ function initTiktokSSE() {
     try {
       const data = JSON.parse(e.data);
       if (el.tiktokViewerCount) {
-        el.tiktokViewerCount.textContent = `👁 ${data.viewerCount}`;
+        el.tiktokViewerCount.textContent = `👁 ${formatCount(data.viewerCount)}`;
+      }
+      if (el.stageViewerInfo) {
+        el.stageViewerInfo.textContent = `👁 ${formatCount(data.viewerCount)}`;
       }
     } catch (_) {}
   });
@@ -607,6 +790,24 @@ function initTiktokSSE() {
   tiktokEventSource.addEventListener('like', (e) => {
     try {
       const data = JSON.parse(e.data);
+      if (data.totalLikes !== undefined) {
+        updateLikesUI(data.totalLikes);
+      }
+      if (el.likeHeartIcon) {
+        el.likeHeartIcon.classList.remove('beat');
+        void el.likeHeartIcon.offsetWidth;
+        el.likeHeartIcon.classList.add('beat');
+      }
+      if (el.recentTapFlash && (data.user || data.nickname)) {
+        el.recentTapFlash.style.display = 'flex';
+        if (el.recentTapText) {
+          const userStr = data.nickname || data.user || 'Kawan';
+          const tapCount = data.likeCount ? ` (+${data.likeCount} tap)` : '';
+          el.recentTapText.textContent = `@${userStr}${tapCount}`;
+        }
+      }
+      spawnFloatingHearts(Math.min(4, Math.ceil((data.likeCount || 1) / 3)));
+
       if (data.likeCount >= 10 || (data.totalLikes && data.totalLikes % 50 === 0)) {
         if (state === 'IDLE' && !isMusicPlaying) {
           face.triggerLaugh(1.2);
@@ -616,22 +817,116 @@ function initTiktokSSE() {
   });
 }
 
+// ---------- Smart Chat Queue Management ----------
+const MAX_SMART_QUEUE = 6;
+const CHAT_STALE_MS = 25000; // Komentar lebih dari 25 detik dianggap basi saat antrean padat
+
+function scoreTiktokComment(item) {
+  const comment = (item.comment || '').toLowerCase().trim();
+  let score = 0;
+
+  // 1. Perintah aksi (joget / mosh / musik) = Prioritas Tertinggi (+10)
+  if (/\bjoget\b|\bmosh\b|\bmoshpit\b|\bgoyang\b|\bdance\b|iphonekupi/i.test(comment)) {
+    score += 10;
+  }
+
+  // 2. Pertanyaan interaktif (ada tanda tanya atau kata tanya) = Prioritas Tinggi (+6)
+  if (/\?|kenapa|mengapa|bagaimana|gimana|apa|siapa|kapan|dimana|kok|bisa|apakah|beneran/i.test(comment)) {
+    score += 6;
+  }
+
+  // 3. Pesan bermakna / panjang kalimat cukup (bukan spam) = (+3)
+  if (comment.length >= 10) {
+    score += 3;
+  }
+
+  // 4. Pengurang untuk pesan spam pendek / satu huruf ("p", "halo", "hai", single emoji) = (-3)
+  if (comment.length <= 3 || /^(p+|halo+|hai+|tes+|test+|y+|ok+|oke+|wkwk+)$/i.test(comment)) {
+    score -= 3;
+  }
+
+  // 5. Bonus kesegaran: komentar lebih baru dapat sedikit bobot tambahan (+2)
+  const ageSec = (Date.now() - (item.timestamp || Date.now())) / 1000;
+  if (ageSec < 10) score += 2;
+
+  return score;
+}
+
+function cleanStaleChatQueue() {
+  const now = Date.now();
+  // Jika antrean mulai menumpuk (> 3), buang komentar yang sudah basi (> 25 detik)
+  if (tiktokChatQueue.length > 3) {
+    const initialLen = tiktokChatQueue.length;
+    for (let i = tiktokChatQueue.length - 1; i >= 0; i--) {
+      if (now - (tiktokChatQueue[i].timestamp || now) > CHAT_STALE_MS) {
+        tiktokChatQueue.splice(i, 1);
+      }
+    }
+    if (tiktokChatQueue.length < initialLen) {
+      addLog('system', `[Smart Queue] Memangkas ${initialLen - tiktokChatQueue.length} chat basi agar Supri tetap responsif.`);
+    }
+  }
+}
+
 function enqueueTiktokChat({ user, comment, nickname }) {
   const cleanComment = (comment || '').trim();
   if (!cleanComment) return;
 
-  addLog('user', `[Live @${user}]: ${cleanComment}`);
+  recordChatActivity();
 
-  if (tiktokChatQueue.length > 25) {
-    tiktokChatQueue.shift();
+  // 1. Anti-Spam: Cek apakah user yang sama mengirim chat identik berturut-turut
+  const existingIndex = tiktokChatQueue.findIndex((item) => item.user === user);
+  if (existingIndex !== -1) {
+    const existing = tiktokChatQueue[existingIndex];
+    if (existing.comment.toLowerCase() === cleanComment.toLowerCase()) {
+      // Spam komentar sama persis dari user yang sama diabaikan
+      return;
+    }
+    // Jika user mengirim komentar baru, ganti komentar lamanya dengan yang terbaru
+    tiktokChatQueue[existingIndex] = {
+      user,
+      comment: cleanComment,
+      nickname: nickname || user,
+      timestamp: Date.now(),
+    };
+    addLog('user', `[Live @${user}]: ${cleanComment}`);
+    updateTiktokQueueUI();
+    tryProcessNextTiktokChat();
+    return;
   }
 
-  tiktokChatQueue.push({ user, comment: cleanComment, nickname: nickname || user });
+  addLog('user', `[Live @${user}]: ${cleanComment}`);
+
+  // 2. Bersihkan chat basi
+  cleanStaleChatQueue();
+
+  // 3. Batasi antrean agar tidak menumpuk berlebihan (Maksimal MAX_SMART_QUEUE = 6)
+  if (tiktokChatQueue.length >= MAX_SMART_QUEUE) {
+    // Cari dan buang komentar dengan skor terendah
+    let lowestIdx = 0;
+    let lowestScore = Infinity;
+    tiktokChatQueue.forEach((item, idx) => {
+      const sc = scoreTiktokComment(item);
+      if (sc < lowestScore) {
+        lowestScore = sc;
+        lowestIdx = idx;
+      }
+    });
+    tiktokChatQueue.splice(lowestIdx, 1);
+  }
+
+  tiktokChatQueue.push({
+    user,
+    comment: cleanComment,
+    nickname: nickname || user,
+    timestamp: Date.now(),
+  });
   updateTiktokQueueUI();
   tryProcessNextTiktokChat();
 }
 
 function handleTiktokGift({ user, giftName, repeatCount }) {
+  recordChatActivity();
   const countStr = repeatCount && repeatCount > 1 ? ` x${repeatCount}` : '';
   const giftDisplay = giftName || 'saweran';
   const giftMsg = `🎁 @${user} kirim ${giftDisplay}${countStr}!`;
@@ -639,7 +934,7 @@ function handleTiktokGift({ user, giftName, repeatCount }) {
 
   // Jika lagu moshing belum berputar: langsung nyalakan lagu moshing iphonekupi!
   if (!isMusicPlaying) {
-    const thankIntro = `Wanjay saweran masuk dari ${user}! Kirim ${giftDisplay}! Gas moshpit lagu iphonekupi bro senggol dong!`;
+    const thankIntro = `Wanjay saweran masuk dari ${user}! Kirim ${giftDisplay}! Fiks aura lu nambah sejuta! Gas moshpit lagu iphonekupi level sigma!`;
     startIphonekupiMosh({
       intro: false,
       customIntro: thankIntro,
@@ -648,7 +943,7 @@ function handleTiktokGift({ user, giftName, repeatCount }) {
     });
   } else {
     // Jika musik sudah menyala, serukan terima kasih sambil terus joget moshing!
-    const shoutOut = `Mantap lagi dari ${user} sawer ${giftDisplay}! Menyala bro!`;
+    const shoutOut = `Mantap lagi dari ${user} sawer ${giftDisplay}! Aura lu makin tak terbatas no cap!`;
     tts.unlock();
     face.triggerLaugh(2.5);
     setLine(el.aiLine, `🎵 ${shoutOut}`);
@@ -661,12 +956,80 @@ async function tryProcessNextTiktokChat() {
   if (isProcessingTiktokChat) return;
   if (tiktokChatQueue.length === 0) return;
 
-  if (state !== 'IDLE') return;
-  if (isMusicPlaying) return;
+  // Supri bisa merespons chat saat IDLE maupun saat sedang MOSHING joget!
+  if (state !== 'IDLE' && state !== 'MOSHING') return;
 
-  const item = tiktokChatQueue.shift();
+  // Bersihkan komentar basi jika antrean numpuk
+  cleanStaleChatQueue();
+  if (tiktokChatQueue.length === 0) {
+    updateTiktokQueueUI();
+    return;
+  }
+
+  // SMART SELECTION:
+  // Jika antrean santai (1-2 item): ambil sesuai urutan FIFO
+  // Jika antrean numpuk (>= 3 item): pilih chat paling menarik / prioritas tertinggi!
+  let selectedIndex = 0;
+  if (tiktokChatQueue.length >= 3) {
+    let bestScore = -Infinity;
+    tiktokChatQueue.forEach((item, idx) => {
+      const sc = scoreTiktokComment(item);
+      if (sc > bestScore) {
+        bestScore = sc;
+        selectedIndex = idx;
+      }
+    });
+  }
+
+  const [item] = tiktokChatQueue.splice(selectedIndex, 1);
+
+  // Jika setelah mengambil masih ada lebih dari 3 chat yang numpuk,
+  // sortir dan pertahankan maksimal 3 chat teratas, buang sisanya agar tidak delay berlarut-larut
+  if (tiktokChatQueue.length > 3) {
+    tiktokChatQueue.sort((a, b) => scoreTiktokComment(b) - scoreTiktokComment(a));
+    const droppedCount = tiktokChatQueue.length - 3;
+    tiktokChatQueue.length = 3;
+    addLog('system', `[Smart Queue] Antrean padat: memprioritaskan chat terbaik, memangkas ${droppedCount} chat basi.`);
+  }
+
   updateTiktokQueueUI();
   isProcessingTiktokChat = true;
+  recordChatActivity();
+
+  // Deteksi perintah joget dari penonton TikTok Live
+  const commentLower = (item.comment || '').toLowerCase();
+  const isJogetRequest = /\bjoget\b|\bmosh\b|\bmoshpit\b|\bgoyang\b|\bdance\b/i.test(commentLower);
+
+  if (isJogetRequest) {
+    const senderName = item.nickname || item.user;
+    if (isMusicPlaying) {
+      // Jika lagu joget sudah menyala, beri seruan heboh tanpa memutus lagu
+      const jogetShout = `Wanjay kak ${senderName}! Ini kita udah lagi moshpit gaspol lagu iphonekupi level sigma! Aura lu nambah seribu no cap!`;
+      tts.unlock();
+      face.triggerLaugh(2.2);
+      setLine(el.userLine, `@${item.user}: ${item.comment}`);
+      setLine(el.aiLine, `🎵 ${jogetShout}`);
+      addLog('assistant', jogetShout);
+      tts.enqueue(jogetShout);
+    } else {
+      const jogetIntro = `Wanjay riil! Kak ${senderName} minta joget! Lagu iphonekupi langsung kita gas moshpit level sigma fiks no counter!`;
+      startIphonekupiMosh({
+        intro: true,
+        customIntro: jogetIntro,
+        userLabel: `💬 @${item.user}: ${item.comment}`,
+        aiLabel: `🎵 JOGET REQUEST DARI @${item.user} · MOSHPIT ON 🤘`,
+      });
+    }
+    isProcessingTiktokChat = false;
+    setTimeout(() => {
+      if (tiktokChatQueue.length > 0) {
+        tryProcessNextTiktokChat();
+      } else {
+        tryProcessNextJoinGreeting();
+      }
+    }, 1500);
+    return;
+  }
 
   try {
     setLine(el.userLine, `@${item.user}: ${item.comment}`);
@@ -681,7 +1044,7 @@ async function tryProcessNextTiktokChat() {
       } else {
         tryProcessNextJoinGreeting();
       }
-    }, 2000);
+    }, 1500);
   }
 }
 
@@ -712,12 +1075,12 @@ function cleanViewerName(rawName) {
 }
 
 const GREETING_TEMPLATES = [
-  (name) => `Halo ka ${name}, selamat datang di live!`,
-  (name) => `Halo ka ${name}, welcome! Tap-tap layarnya ya!`,
-  (name) => `Halo ka ${name}, selamat bergabung! Santuy bareng kita di sini!`,
-  (name) => `Halo ka ${name}! Salam kenal, thank you udah mampir!`,
-  (name) => `Halo ka ${name}! Welcome to the stream bro!`,
-  (name) => `Halo ka ${name}, apa kabar nih? Selamat datang di live!`,
+  (name) => `Halo bro ${name}! Selamat datang di live stream! Aura lu fiks langsung nambah seribu no cap! Lu bisa gift atau ketik joget biar gue joget ya!`,
+  (name) => `Waduh ada bro ${name} nih chat! Welcome to the stream! Ketik joget di chat atau sawer gift biar kita moshpit skibidi!`,
+  (name) => `Halo bro ${name}, fiks sigma abis udah mampir! Mau liat gue moshpit? Ketik joget di chat atau kirim gift ya bro!`,
+  (name) => `Halo bro ${name}! Salam kenal sang rizzler! Ketik joget di kolom chat atau kirim gift biar rizz kita makin menyala!`,
+  (name) => `Halo bro ${name}! Riil ga sih chat bro ${name} dateng! Tap-tap layarnya atau ketik joget biar gue langsung moshpit!`,
+  (name) => `Halo bro ${name}, apa kabar nih sang sigma dari Ohio? Lu bisa kirim gift atau ketik joget di chat biar kita goyang!`,
 ];
 
 function handleTiktokMemberJoin(data) {
@@ -758,20 +1121,20 @@ async function tryProcessNextJoinGreeting() {
   if (isGreetingJoin) return;
   if (tiktokJoinQueue.length === 0) return;
 
-  // Jangan menyela jika Supri sedang berbicara, berpikir, atau musik mosh menyala
-  if (state !== 'IDLE') return;
-  if (isMusicPlaying) return;
+  // Jangan menyela jika Supri sedang berbicara atau berpikir
+  if (state !== 'IDLE' && state !== 'MOSHING') return;
   // Jika ada antrean komentar chat, prioritaskan merespons chat
   if (tiktokChatQueue.length > 0) return;
 
   isGreetingJoin = true;
+  recordChatActivity();
 
   // Jika ada 2 atau lebih penonton dalam antrean, sapa berpasangan agar lebih efisien
   let greetText = '';
   if (tiktokJoinQueue.length >= 2) {
     const name1 = tiktokJoinQueue.shift();
     const name2 = tiktokJoinQueue.shift();
-    greetText = `Halo ka ${name1} dan ka ${name2}, selamat datang di live! Tap-tap layarnya ya!`;
+    greetText = `Halo bro ${name1} dan bro ${name2}, selamat datang di live chat! Aura kalian fiks nambah sejuta! Lu bisa gift atau ketik joget biar gue joget ya!`;
   } else {
     const name = tiktokJoinQueue.shift();
     const template = GREETING_TEMPLATES[Math.floor(Math.random() * GREETING_TEMPLATES.length)];
@@ -849,6 +1212,139 @@ async function toggleTiktokConnection() {
   }
 }
 
+// ---------- Idle Auto-News Monologue (Scraped Top Indonesian News) ----------
+let isMonologueRunning = false;
+let cachedNewsList = [];
+let newsPointer = 0;
+let lastNewsFetchTime = 0;
+
+const NEWS_MONOLOGUE_TEMPLATES = [
+  (title, summary, source) => `Chat, dengerin berita panas dari ${source} nih! ${title}. Ringkasannya, ${summary}. Riil no cap kan chat? Btw yang baru join, sawer gift atau ketik joget biar aura lu nambah seribu dan gue langsung moshpit!`,
+  (title, summary, source) => `Waduh chat, ada info gokil dari ${source}! ${title}. Kabarnya, ${summary}. Gimana menurut kalian para sigma di chat? Komen dong! Mau liat gue moshpit? Ketik joget di chat sekarang!`,
+  (title, summary, source) => `Chat is this real? Liat update berita dari ${source} barusan! ${title}. ${summary}. Fiks no counter sih ini. Yang mau naikin aura, yuk tap tap layar atau ketik joget biar gue goyang!`,
+  (title, summary, source) => `Sambil jeda mewing sebentar, dengerin kabar dari ${source} nih chat! ${title}. ${summary}. Gede banget auranya! Ketik joget di chat atau kirim gift biar kita gas moshpit lagu iphonekupi!`,
+  (title, summary, source) => `Breaking news dari ${source} nih chat, let him cook! ${title}. ${summary}. Gokil abis no cap! Jangan lupa sawer gift atau ketik joget biar gue joget moshpit!`,
+];
+
+const IDLE_BANTER_TEMPLATES = [
+  () => `Chat, kok pada diem aja sih? Lagi pada fokus mewing ya? Ketik joget di kolom chat atau kirim gift dong biar gue langsung moshpit lagu iphonekupi!`,
+  () => `Sepi banget live stream kita nih chat, jangan sampai aura kita minus! Yuk tap tap layar dan ketik joget di chat biar kita goyang level sigma!`,
+  () => `Waduh chat, jangan cuma jadi silent watcher di Ohio dong! Sawer gift atau ketik joget biar gue moshpit dan aura lu langsung nambah sejuta no cap!`,
+];
+
+async function fetchLatestNews() {
+  try {
+    const res = await fetch('/api/news/latest');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (data.news || []);
+    if (list.length > 0) {
+      cachedNewsList = list;
+      lastNewsFetchTime = Date.now();
+      return cachedNewsList;
+    }
+  } catch (err) {
+    console.warn('[auto-news] gagal ambil berita:', err);
+  }
+  return cachedNewsList;
+}
+
+async function triggerAutoNewsMonologue(force = false) {
+  if (isMonologueRunning) return;
+  if (!force) {
+    if (state !== 'IDLE') return;
+    if (isMusicPlaying) return;
+    if (isProcessingTiktokChat) return;
+    if (tiktokChatQueue.length > 0) return;
+  }
+
+  isMonologueRunning = true;
+  isSpeakingNews = true;
+  recordChatActivity();
+
+  try {
+    if (cachedNewsList.length === 0 || Date.now() - lastNewsFetchTime > 120000) {
+      await fetchLatestNews();
+    }
+
+    let speechText = '';
+    let headlineSource = 'ANTARA News';
+
+    if (cachedNewsList.length > 0) {
+      const item = cachedNewsList[newsPointer % cachedNewsList.length];
+      newsPointer++;
+      headlineSource = item.source || 'ANTARA News';
+      const template = NEWS_MONOLOGUE_TEMPLATES[Math.floor(Math.random() * NEWS_MONOLOGUE_TEMPLATES.length)];
+      speechText = template(item.cleanTitle || item.title, item.summary || item.title, headlineSource);
+    } else {
+      const template = IDLE_BANTER_TEMPLATES[Math.floor(Math.random() * IDLE_BANTER_TEMPLATES.length)];
+      speechText = template();
+    }
+
+    setLine(el.userLine, `📰 Berita Terkini (${headlineSource})`);
+    setLine(el.aiLine, speechText);
+    addLog('system', `[Auto-News] ${headlineSource}: ${speechText}`);
+    addLog('assistant', speechText);
+
+    face.setGrin(0.42);
+    face.triggerLaugh(1.5);
+    setTimeout(() => {
+      if (!face.isMoshing) face.setGrin(0);
+    }, 3500);
+
+    tts.unlock();
+    tts.enqueue(speechText);
+  } catch (err) {
+    console.error('[triggerAutoNewsMonologue error]', err);
+  } finally {
+    setTimeout(() => {
+      isMonologueRunning = false;
+      isSpeakingNews = false;
+      recordChatActivity();
+    }, 5000);
+  }
+}
+
+function checkIdleAutoNews() {
+  const isEnabled = el.autoNewsToggle ? el.autoNewsToggle.checked : (prefs.get('supri-auto-news', '1') === '1');
+  if (!isEnabled) {
+    if (el.autoNewsLabel) el.autoNewsLabel.textContent = 'Auto-berita (OFF)';
+    return;
+  }
+
+  const idleSeconds = Math.floor((Date.now() - lastChatActivityTime) / 1000);
+  const remaining = Math.max(0, 10 - idleSeconds);
+
+  if (isMonologueRunning || isSpeakingNews) {
+    if (el.autoNewsLabel) el.autoNewsLabel.textContent = 'Membacakan Berita 🎙️';
+    return;
+  }
+
+  if (state === 'MOSHING' || isMusicPlaying) {
+    if (el.autoNewsLabel) el.autoNewsLabel.textContent = 'Sedang Joget 🎵';
+    return;
+  }
+
+  if (state !== 'IDLE') {
+    if (el.autoNewsLabel) el.autoNewsLabel.textContent = `Supri ${state}...`;
+    return;
+  }
+
+  if (tiktokChatQueue.length > 0 || isProcessingTiktokChat) {
+    if (el.autoNewsLabel) el.autoNewsLabel.textContent = 'Memproses Chat...';
+    return;
+  }
+
+  if (el.autoNewsLabel) {
+    el.autoNewsLabel.textContent = `Auto-berita (${remaining}s)`;
+  }
+
+  // 10 detik hening tanpa ada chat yang masuk
+  if (idleSeconds >= 10) {
+    triggerAutoNewsMonologue();
+  }
+}
+
 // ---------- Monitor sistem & jam ----------
 async function pollSystem() {
   try {
@@ -871,7 +1367,7 @@ function tickClock() {
 
 // ---------- Event ----------
 el.micBtn.addEventListener('click', () => setMic(!micOn));
-el.interruptBtn.addEventListener('click', () => interrupt());
+el.interruptBtn.addEventListener('click', () => interrupt({ stopMusic: true }));
 if (el.moshBtn) {
   el.moshBtn.addEventListener('click', () => {
     if (isMusicPlaying) stopIphonekupiMosh();
@@ -961,14 +1457,107 @@ el.fullBtn.addEventListener('click', () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else document.documentElement.requestFullscreen?.();
 });
+if (el.liveModeBtn) {
+  el.liveModeBtn.addEventListener('click', () => setLiveMode916(!isLiveMode916));
+}
+if (el.zoomBtn) {
+  el.zoomBtn.addEventListener('click', () => setZoomOut(!isZoomOut));
+}
+if (el.obsCleanBtn) {
+  el.obsCleanBtn.addEventListener('click', () => setObsClean(!isObsClean));
+}
+
+// Simulasi Test Buttons (Gift, Tap, Reset)
+if (el.testGiftBtn) {
+  el.testGiftBtn.addEventListener('click', async () => {
+    const mockGifts = [
+      { name: 'Paus Menyelam 🐳', diamonds: 1000, user: 'Sultan_Kemang' },
+      { name: 'Singa Emas 🦁', diamonds: 500, user: 'Bos_Tambang' },
+      { name: 'Topi & Kacamata 🕶️', diamonds: 150, user: 'Juragan_Kopi' },
+      { name: 'Mawar Merah 🌹', diamonds: 10, user: 'Kak_Cantik' },
+      { name: 'Kucing Hoki 🐱', diamonds: 50, user: 'Raja_Sawer' },
+    ];
+    const pick = mockGifts[Math.floor(Math.random() * mockGifts.length)];
+    try {
+      await fetch('/api/tiktok/test-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'gift',
+          user: pick.user,
+          nickname: pick.user.replace(/_/g, ' '),
+          giftName: pick.name,
+          repeatCount: Math.floor(Math.random() * 5) + 1,
+          diamondCount: pick.diamonds,
+        }),
+      });
+    } catch (err) {
+      console.warn('Test gift error:', err);
+    }
+  });
+}
+
+if (el.testLikeBtn) {
+  el.testLikeBtn.addEventListener('click', async () => {
+    const mockUsers = ['andi_tap', 'budi_like', 'siti_loveyou', 'doni_semangat', 'rizky_tap'];
+    const user = mockUsers[Math.floor(Math.random() * mockUsers.length)];
+    try {
+      await fetch('/api/tiktok/test-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'like',
+          user,
+          nickname: user.replace(/_/g, ' '),
+          likeCount: Math.floor(Math.random() * 15) + 5,
+        }),
+      });
+    } catch (err) {
+      console.warn('Test like error:', err);
+    }
+  });
+}
+
+if (el.resetStatsBtn) {
+  el.resetStatsBtn.addEventListener('click', async () => {
+    try {
+      await fetch('/api/tiktok/test-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'reset' }),
+      });
+    } catch (err) {
+      console.warn('Reset error:', err);
+    }
+  });
+}
+
+if (el.testNewsBtn) {
+  el.testNewsBtn.addEventListener('click', () => {
+    triggerAutoNewsMonologue(true);
+  });
+}
+
+if (el.autoNewsToggle) {
+  el.autoNewsToggle.checked = prefs.get('supri-auto-news', '1') === '1';
+  el.autoNewsToggle.addEventListener('change', () => {
+    prefs.set('supri-auto-news', el.autoNewsToggle.checked ? '1' : '0');
+    showHint(el.autoNewsToggle.checked ? 'Auto berita saat hening 10s AKTIF' : 'Auto berita NONAKTIF');
+  });
+}
+
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (isObsClean) {
+      setObsClean(false);
+      return;
+    }
     if (el.cmdForm && el.cmdForm.style.display !== 'none') {
       toggleChatInput(false);
       return;
     }
     if (el.logDrawer.classList.contains('open')) toggleLog(false);
-    else interrupt();
+    else interrupt({ stopMusic: true });
   }
   // Tekan 'c' / 'C' saat tidak sedang fokus di text input untuk cepat buka kolom komentar
   if (
@@ -983,7 +1572,21 @@ addEventListener('keydown', (e) => {
   }
 });
 
+const unlockAudioOnGesture = () => {
+  tts.unlock();
+  window.removeEventListener('click', unlockAudioOnGesture);
+  window.removeEventListener('keydown', unlockAudioOnGesture);
+  window.removeEventListener('touchstart', unlockAudioOnGesture);
+};
+window.addEventListener('click', unlockAudioOnGesture);
+window.addEventListener('keydown', unlockAudioOnGesture);
+window.addEventListener('touchstart', unlockAudioOnGesture);
+
 // ---------- Init ----------
+setLiveMode916(isLiveMode916);
+setZoomOut(isZoomOut);
+if (isObsClean) setObsClean(true);
+
 el.sensitivity.value = prefs.get('supri-sens', '60');
 el.voiceInterrupt.checked = prefs.get('supri-vi', '0') === '1';
 let savedVoice = prefs.get('supri-voice', 'clone');
@@ -1018,6 +1621,7 @@ tickClock();
 setInterval(tickClock, 1000);
 pollSystem();
 setInterval(pollSystem, 3000);
+setInterval(checkIdleAutoNews, 1000);
 initTiktokSSE();
 if (['IDLE', 'LISTENING', 'THINKING', 'SPEAKING'].includes(pose)) setState(pose);
 requestAnimationFrame(frame);

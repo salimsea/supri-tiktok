@@ -11,23 +11,104 @@
     />
     <link rel="stylesheet" href="./hud.css" />
   </head>
-  <body data-state="IDLE">
-    <canvas id="scene"></canvas>
-    <div class="scanlines"></div>
+  <body data-state="IDLE" class="live-9-16-active">
+    <div id="liveStreamWrapper" class="live-stream-wrapper">
+      <div id="liveStreamStage" class="live-stream-stage">
+        <!-- Frame Cyber Corners -->
+        <div class="frame-corner top-left"></div>
+        <div class="frame-corner top-right"></div>
+        <div class="frame-corner bottom-left"></div>
+        <div class="frame-corner bottom-right"></div>
 
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark">S.U.P.R.I</span>
-        <span class="brand-sub">TIKTOK LIVE AI HOST</span>
+        <!-- Frame Top HUD Header -->
+        <div class="stage-top-hud">
+          <div class="stage-live-badge"><span class="live-pulse-dot"></span> LIVE 9:16</div>
+          <div class="stage-room-info" id="stageRoomInfo">OFFLINE</div>
+          <div class="stage-viewer-info" id="stageViewerInfo">👁 0</div>
+        </div>
+
+        <canvas id="scene"></canvas>
+        <div class="scanlines"></div>
+
+        <!-- WIDGET KIRI: TOP 5 SULTAN (SAWERAN) -->
+        <div class="stream-widget widget-sultan" id="widgetSultan">
+          <div class="widget-header">
+            <div class="widget-title-row">
+              <span class="widget-icon">👑</span>
+              <span class="widget-title">TOP 5 SULTAN</span>
+            </div>
+            <span class="widget-badge">SAWERAN</span>
+          </div>
+          <div class="sultan-list" id="sultanList">
+            <div class="sultan-empty">Menunggu Sultan... 💎</div>
+          </div>
+        </div>
+
+        <!-- WIDGET KANAN: TAP-TAP LAYAR & TOTAL LIKES -->
+        <div class="stream-widget widget-likes" id="widgetLikes">
+          <div class="widget-header">
+            <div class="widget-title-row">
+              <span class="widget-icon">❤️</span>
+              <span class="widget-title">TAP-TAP</span>
+            </div>
+            <span class="widget-badge">LIKES</span>
+          </div>
+
+          <div class="like-counter-box" id="likeCounterBox">
+            <span class="like-heart-icon" id="likeHeartIcon">❤️</span>
+            <div class="like-counter-details">
+              <span class="like-number-val" id="streamLikeCount">0</span>
+              <span class="like-number-sub">TOTAL LIKES</span>
+            </div>
+          </div>
+
+          <div class="recent-tap-flash" id="recentTapFlash" style="display: none;">
+            <span class="tap-bolt">⚡</span>
+            <span id="recentTapText">—</span>
+          </div>
+
+          <div class="tappers-box">
+            <div class="tappers-title">🔥 TOP TAPPERS</div>
+            <div class="tappers-list" id="tappersList">
+              <div class="tapper-empty">Yuk bantu tap-tap layar! ✨</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FLOATING HEARTS LAYER FOR LIVE LIKES -->
+        <div class="floating-hearts-layer" id="floatingHearts"></div>
+
+        <!-- LIVE STREAM SUBTITLE / CAPTIONS -->
+        <div class="stream-caption-bar" id="streamCaptionBar">
+          <span class="caption-tag">SUPRI</span>
+          <span class="caption-text" id="streamCaptionText">Siap menemani live streaming TikTok!</span>
+        </div>
       </div>
-      <div class="state-pill"><span class="dot"></span><span id="stateLabel">IDLE</span></div>
-      <div class="meta">
-        <span id="clock">--:--:--</span>
-        <span id="modelName" class="muted">MODEL —</span>
-      </div>
-    </header>
+    </div>
 
     <aside class="panel panel-left">
+      <div class="panel-brand-header">
+        <div class="brand">
+          <span class="brand-mark">S.U.P.R.I</span>
+          <span class="brand-sub">TIKTOK LIVE AI HOST</span>
+        </div>
+        <div class="state-pill"><span class="dot"></span><span id="stateLabel">IDLE</span></div>
+      </div>
+
+      <div class="panel-mode-group">
+        <div class="mode-header-label">// DISPLAY & FRAME</div>
+        <div class="mode-btn-row">
+          <button id="liveModeBtn" class="btn btn-pill-toggle active" type="button" title="Beralih Mode Frame Live 9:16">
+            <span class="btn-icon">📱</span> <span id="liveModeLabel">FRAME 9:16</span>
+          </button>
+          <button id="zoomBtn" class="btn btn-ghost small active" type="button" title="Perbesar / Perkecil Wajah Supri">
+            <span id="zoomLabel">🔍 ZOOM OUT</span>
+          </button>
+          <button id="obsCleanBtn" class="btn btn-ghost small" type="button" title="Sembunyikan Menu untuk OBS Browser Source">
+            🎬 OBS CLEAN
+          </button>
+        </div>
+      </div>
       <h2>// CONTROL</h2>
       <button id="micBtn" class="btn btn-mic" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
@@ -121,9 +202,28 @@
         <button id="logBtn" class="btn btn-ghost">LOG</button>
         <button id="fullBtn" class="btn btn-ghost">FULLSCREEN</button>
       </div>
+
+      <label class="tiktok-toggle" title="Supri otomatis membacakan berita terbaru dan mengajak interaksi jika live sepi selama 10 detik">
+        <input type="checkbox" id="autoNewsToggle" checked />
+        <span id="autoNewsLabel">Auto-berita saat sepi (10s)</span>
+      </label>
+
+      <div class="field test-sim-box">
+        <div class="field-head"><span>SIMULASI TIKTOK (TEST)</span></div>
+        <div class="test-btn-row">
+          <button id="testGiftBtn" type="button" class="btn btn-ghost small" title="Simulasi Gift Saweran Sultan">🎁 +GIFT</button>
+          <button id="testLikeBtn" type="button" class="btn btn-ghost small" title="Simulasi Tap-Tap Layar (Likes)">❤️ +TAP</button>
+          <button id="testNewsBtn" type="button" class="btn btn-ghost small" title="Test Supri Bacakan Berita Terbaru">📰 +BERITA</button>
+          <button id="resetStatsBtn" type="button" class="btn btn-ghost small" title="Reset Sultan & Like">🔄 RESET</button>
+        </div>
+      </div>
     </aside>
 
     <aside class="panel panel-right">
+      <div class="panel-meta-header">
+        <div id="clock">--:--:--</div>
+        <div id="modelName" class="muted small">MODEL —</div>
+      </div>
       <h2>// SYSTEM MONITOR</h2>
       <div class="stat"><span>CPU</span><div class="bar"><div id="cpuBar"></div></div><span id="cpuVal">--%</span></div>
       <div class="stat"><span>RAM</span><div class="bar"><div id="ramBar"></div></div><span id="ramVal">--%</span></div>
